@@ -32,6 +32,8 @@ import {
   Calendar,
   TrendingUp,
   Activity,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
@@ -63,6 +65,7 @@ import {
   BarChart,
   Bar,
   ReferenceLine,
+  LabelList,
 } from "recharts"
 
 // Types
@@ -781,19 +784,25 @@ export function SmartGarden() {
               <label className="text-sm font-medium text-foreground mb-2 block">
                 Sensor Type
               </label>
-              <Select 
-                value={availableSensorTypes.includes(newSensorType) ? newSensorType : (availableSensorTypes[0] || "")} 
-                onValueChange={(value: "Temperature" | "Moisture" | "Light") => setNewSensorType(value)}
-              >
-                <SelectTrigger className="rounded-xl">
-                  <SelectValue placeholder="Select sensor type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableSensorTypes.map((type) => (
-                    <SelectItem key={type} value={type}>{type}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+{availableSensorTypes.length > 0 ? (
+                <Select 
+                  value={availableSensorTypes.includes(newSensorType) ? newSensorType : availableSensorTypes[0]} 
+                  onValueChange={(value: "Temperature" | "Moisture" | "Light") => setNewSensorType(value)}
+                >
+                  <SelectTrigger className="rounded-xl">
+                    <SelectValue placeholder="Select sensor type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableSensorTypes.map((type) => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="h-10 px-3 py-2 rounded-xl border border-border bg-muted text-muted-foreground text-sm flex items-center">
+                  All sensor types connected
+                </div>
+              )}
             </div>
             <div>
               <label className="text-sm font-medium text-foreground mb-2 block">
@@ -2113,50 +2122,118 @@ function AnalyticsTab({
 }) {
   const [showSourceData, setShowSourceData] = useState(false)
   
+  // Independent offset states for time navigation
+  const [dayOffset, setDayOffset] = useState(0)
+  const [weekOffset, setWeekOffset] = useState(0)
+  const [monthOffset, setMonthOffset] = useState(0)
+  
+  // Get current offset based on active filter
+  const getCurrentOffset = () => {
+    if (timeFilter === "Day") return dayOffset
+    if (timeFilter === "Week") return weekOffset
+    return monthOffset
+  }
+  
+  const setCurrentOffset = (delta: number) => {
+    if (timeFilter === "Day") setDayOffset(prev => prev + delta)
+    else if (timeFilter === "Week") setWeekOffset(prev => prev + delta)
+    else setMonthOffset(prev => prev + delta)
+  }
+  
+  const resetCurrentOffset = () => {
+    if (timeFilter === "Day") setDayOffset(0)
+    else if (timeFilter === "Week") setWeekOffset(0)
+    else setMonthOffset(0)
+  }
+  
+  const currentOffset = getCurrentOffset()
+  
+  // Vietnamese day names
+  const vietnameseDays = ["Chủ nhật", "Thứ hai", "Thứ ba", "Thứ tư", "Thứ năm", "Thứ sáu", "Thứ bảy"]
+  
+  // Get dynamic date context label in Vietnamese
+  const getDateContextLabel = () => {
+    const today = new Date()
+    
+    if (timeFilter === "Day") {
+      const targetDate = new Date(today)
+      targetDate.setDate(today.getDate() + currentOffset)
+      const dayName = vietnameseDays[targetDate.getDay()]
+      const day = targetDate.getDate()
+      const month = targetDate.getMonth() + 1
+      return `${dayName}, ngày ${day} tháng ${month}`
+    } else if (timeFilter === "Week") {
+      const targetDate = new Date(today)
+      targetDate.setDate(today.getDate() + (currentOffset * 7))
+      // Get Monday of that week
+      const dayOfWeek = targetDate.getDay()
+      const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+      const monday = new Date(targetDate)
+      monday.setDate(targetDate.getDate() + mondayOffset)
+      const sunday = new Date(monday)
+      sunday.setDate(monday.getDate() + 6)
+      
+      const startDay = monday.getDate().toString().padStart(2, "0")
+      const startMonth = monday.getMonth() + 1
+      const endDay = sunday.getDate().toString().padStart(2, "0")
+      const endMonth = sunday.getMonth() + 1
+      
+      return `${startDay} tháng ${startMonth} - ${endDay} tháng ${endMonth}`
+    } else {
+      const targetDate = new Date(today)
+      targetDate.setMonth(today.getMonth() + currentOffset)
+      const month = targetDate.getMonth() + 1
+      const year = targetDate.getFullYear()
+      return `Tháng ${month} năm ${year}`
+    }
+  }
+  
   // Memoize chart data to prevent re-render jitter
   const chartData = useMemo(() => {
     const baseData = sensorHistoryData[selectedSensor]
+    // Use offset as part of seed for consistent data per offset
+    const seed = currentOffset * 100
     
     if (timeFilter === "Day") {
       const labels = ["0h", "4h", "8h", "12h", "16h", "20h", "24h"]
       return labels.map((label, i) => ({
         time: label,
-        value: baseData[i % baseData.length] + Math.floor(Math.random() * 5 - 2),
+        value: baseData[i % baseData.length] + ((seed + i * 3) % 10) - 5,
       }))
     } else if (timeFilter === "Week") {
-      const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+      const labels = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
       return labels.map((label, i) => ({
         time: label,
-        value: baseData[i % baseData.length] + Math.floor(Math.random() * 5 - 2),
+        value: baseData[i % baseData.length] + ((seed + i * 7) % 12) - 6,
       }))
     }
     
     return Array.from({ length: 30 }, (_, i) => ({
       day: i + 1,
-      value: Math.floor(Math.random() * 200) + 50,
+      value: 50 + ((seed + i * 11) % 150),
     }))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeFilter, selectedSensor])
+  }, [timeFilter, selectedSensor, currentOffset])
   
   // Memoize water usage bar chart data
   const waterBarData = useMemo(() => {
+    const seed = currentOffset * 100
+    
     if (timeFilter === "Day") {
       return waterUsageData.slice(0, 7).map((value, i) => ({
         time: `${i * 4}h`,
-        value,
+        value: value + ((seed + i * 5) % 20) - 10,
       }))
     } else if (timeFilter === "Week") {
-      return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, i) => ({
+      return ["T2", "T3", "T4", "T5", "T6", "T7", "CN"].map((day, i) => ({
         time: day,
-        value: waterUsageData[i % waterUsageData.length],
+        value: waterUsageData[i % waterUsageData.length] + ((seed + i * 8) % 30) - 15,
       }))
     }
     return Array.from({ length: 30 }, (_, i) => ({
       day: i + 1,
-      value: Math.floor(Math.random() * 200) + 50,
+      value: 50 + ((seed + i * 13) % 150),
     }))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeFilter])
+  }, [timeFilter, waterUsageData, currentOffset])
   
   // Get thresholds for selected sensor
   const getThresholdLines = () => {
@@ -2188,66 +2265,106 @@ function AnalyticsTab({
   // Get label for selected sensor
   const getSensorLabel = () => {
     switch (selectedSensor) {
-      case "temp": return "Temperature"
-      case "moisture": return "Soil Moisture"
-      case "light": return "Light Intensity"
-      case "waterVolume": return "Water Volume"
+      case "temp": return "Nhiệt độ"
+      case "moisture": return "Độ ẩm đất"
+      case "light": return "Cường độ sáng"
+      case "waterVolume": return "Lượng nước"
       default: return ""
     }
   }
 
-  // Get dynamic date context label
-  const getDateContextLabel = () => {
-    const today = new Date()
-    const options: Intl.DateTimeFormatOptions = { month: "long", day: "numeric", year: "numeric" }
-    
-    if (timeFilter === "Day") {
-      return `Today, ${today.toLocaleDateString("en-US", options)}`
-    } else if (timeFilter === "Week") {
-      return "Current Week"
-    } else {
-      return today.toLocaleDateString("en-US", { month: "long", year: "numeric" })
-    }
-  }
-
-  // Calculate contextual summary insights
+  // Calculate contextual summary insights based on BOTH selectedSensor AND timeFilter
   const getSummaryInsights = () => {
+    const isDay = timeFilter === "Day"
+    const isMonth = timeFilter === "Month"
+    
     if (selectedSensor === "waterVolume") {
-      const totalVolume = waterUsageData.reduce((a, b) => a + b, 0)
-      const avgDailyVolume = Math.round(totalVolume / 7)
-      const pumpCycles = Math.floor(totalVolume / 20) // Assume 20L per cycle
-      return {
-        items: [
-          { icon: Beaker, value: `${totalVolume}L`, label: "Total Volume" },
-          { icon: Activity, value: `${avgDailyVolume}L`, label: "Avg Daily" },
-          { icon: TrendingUp, value: `${pumpCycles}`, label: "Pump Cycles" },
-        ]
+      const data = waterBarData as { time?: string; day?: number; value: number }[]
+      const totalVolume = data.reduce((a, b) => a + Math.max(0, b.value), 0)
+      
+      if (isDay) {
+        // Micro-level: Daily water stats
+        const peakHour = data.reduce((max, curr, i) => curr.value > (data[max]?.value || 0) ? i : max, 0)
+        const peakValue = Math.max(...data.map(d => d.value))
+        return {
+          items: [
+            { icon: Beaker, value: `${totalVolume}L`, label: "Tổng hôm nay" },
+            { icon: TrendingUp, value: `${peakValue}L`, label: "Cao nhất" },
+            { icon: Clock, value: `${peakHour * 4}h`, label: "Giờ cao điểm" },
+          ]
+        }
+      } else if (isMonth) {
+        // Macro-level: Monthly water stats
+        const avgDaily = Math.round(totalVolume / 30)
+        const pumpCycles = Math.floor(totalVolume / 20)
+        return {
+          items: [
+            { icon: Beaker, value: `${totalVolume}L`, label: "Tổng tháng" },
+            { icon: Activity, value: `${avgDaily}L`, label: "TB ngày" },
+            { icon: TrendingUp, value: `${pumpCycles}`, label: "Chu kỳ bơm" },
+          ]
+        }
+      } else {
+        // Week level
+        const avgDaily = Math.round(totalVolume / 7)
+        const pumpCycles = Math.floor(totalVolume / 20)
+        return {
+          items: [
+            { icon: Beaker, value: `${totalVolume}L`, label: "Tổng tuần" },
+            { icon: Activity, value: `${avgDaily}L`, label: "TB ngày" },
+            { icon: TrendingUp, value: `${pumpCycles}`, label: "Chu kỳ bơm" },
+          ]
+        }
       }
     }
     
     // For Temp/Moisture/Light sensors
-    const values = (chartData as { time?: string; value: number }[]).map(d => d.value)
+    const values = (chartData as { time?: string; day?: number; value: number }[]).map(d => d.value)
     const avg = Math.round(values.reduce((a, b) => a + b, 0) / values.length)
     const max = Math.max(...values)
+    const min = Math.min(...values)
     
-    // Calculate time out of optimal range
+    // Calculate out of optimal range
     let outOfRangeCount = 0
     values.forEach(v => {
       if (selectedSensor === "temp" && (v < thresholds.minTemp || v > thresholds.maxTemp)) outOfRangeCount++
       if (selectedSensor === "moisture" && v < thresholds.moistureThreshold) outOfRangeCount++
       if (selectedSensor === "light" && v > thresholds.maxLight) outOfRangeCount++
     })
-    const outOfRangeHours = timeFilter === "Day" ? outOfRangeCount * 4 : outOfRangeCount * 24
     
     const unit = getUnit()
     const sensorIcon = selectedSensor === "temp" ? Thermometer : selectedSensor === "moisture" ? Droplets : Sun
     
-    return {
-      items: [
-        { icon: sensorIcon, value: `${avg}${unit}`, label: "Average" },
-        { icon: TrendingUp, value: `${max}${unit}`, label: "Highest" },
-        { icon: AlertTriangle, value: `${outOfRangeHours}h`, label: "Out of Range" },
-      ]
+    if (isDay) {
+      // Micro-level: Hourly stats for the day
+      const outOfRangeHours = outOfRangeCount * 4
+      return {
+        items: [
+          { icon: sensorIcon, value: `${avg}${unit}`, label: "TB hôm nay" },
+          { icon: TrendingUp, value: `${max}${unit}`, label: "Cao nhất" },
+          { icon: AlertTriangle, value: `${outOfRangeHours}h`, label: "Ngoài ngưỡng" },
+        ]
+      }
+    } else if (isMonth) {
+      // Macro-level: Monthly stats
+      const outOfRangeDays = outOfRangeCount
+      return {
+        items: [
+          { icon: sensorIcon, value: `${avg}${unit}`, label: "TB tháng" },
+          { icon: TrendingUp, value: `${max}${unit}`, label: "Cao nhất" },
+          { icon: AlertTriangle, value: `${outOfRangeDays} ngày`, label: "Ngoài ngưỡng" },
+        ]
+      }
+    } else {
+      // Week level
+      const outOfRangeDays = outOfRangeCount
+      return {
+        items: [
+          { icon: sensorIcon, value: `${avg}${unit}`, label: "TB tuần" },
+          { icon: TrendingUp, value: `${max}${unit}`, label: "Cao nhất" },
+          { icon: AlertTriangle, value: `${outOfRangeDays} ngày`, label: "Ngoài ngưỡng" },
+        ]
+      }
     }
   }
 
@@ -2269,20 +2386,20 @@ function AnalyticsTab({
                 : "bg-card text-muted-foreground hover:text-foreground shadow-sm"
             )}
           >
-            {filter}
+            {filter === "Day" ? "Ngày" : filter === "Week" ? "Tuần" : "Tháng"}
           </button>
         ))}
       </div>
 
       {/* Sensor Selector */}
       <section className="bg-card rounded-3xl p-5 shadow-sm">
-        <h2 className="font-semibold text-foreground mb-4">Select Data Type</h2>
+        <h2 className="font-semibold text-foreground mb-4">Chọn loại dữ liệu</h2>
         <div className="grid grid-cols-4 gap-2">
           {[
-            { id: "temp" as SensorType, icon: Thermometer, label: "Temp" },
-            { id: "moisture" as SensorType, icon: Droplets, label: "Moisture" },
-            { id: "light" as SensorType, icon: Sun, label: "Light" },
-            { id: "waterVolume" as SensorType, icon: Beaker, label: "Water" },
+            { id: "temp" as SensorType, icon: Thermometer, label: "Nhiệt độ" },
+            { id: "moisture" as SensorType, icon: Droplets, label: "Độ ẩm" },
+            { id: "light" as SensorType, icon: Sun, label: "Ánh sáng" },
+            { id: "waterVolume" as SensorType, icon: Beaker, label: "Nước" },
           ].map((sensor) => (
             <button
               key={sensor.id}
@@ -2301,48 +2418,78 @@ function AnalyticsTab({
         </div>
       </section>
 
-      {/* Main Chart Section - Contextual based on selected sensor */}
+      {/* Main Chart Section */}
       <section className="bg-card rounded-3xl p-5 shadow-sm">
-        {/* Date Context Label */}
-        <div className="flex items-center gap-2 mb-3 text-sm text-muted-foreground">
-          <Calendar className="w-4 h-4" />
-          <span>{getDateContextLabel()}</span>
+        {/* Time Navigation Header */}
+        <div className="flex items-center justify-between mb-4">
+          <button
+            onClick={() => setCurrentOffset(-1)}
+            className="p-2 rounded-full hover:bg-muted transition-colors"
+            aria-label="Previous"
+          >
+            <ChevronLeft className="w-5 h-5 text-muted-foreground" />
+          </button>
+          
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-sm font-medium text-foreground">
+              {getDateContextLabel()}
+            </span>
+            {currentOffset !== 0 && (
+              <button
+                onClick={resetCurrentOffset}
+                className="text-xs text-primary hover:underline"
+              >
+                Về hiện tại
+              </button>
+            )}
+          </div>
+          
+          <button
+            onClick={() => setCurrentOffset(1)}
+            className="p-2 rounded-full hover:bg-muted transition-colors"
+            aria-label="Next"
+          >
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </button>
         </div>
         
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="font-semibold text-foreground">{getSensorLabel()}</h2>
             <p className="text-sm text-muted-foreground">
-              {timeFilter === "Day" ? "Hourly data" : timeFilter === "Week" ? "Daily data" : "Monthly overview"}
+              {timeFilter === "Day" ? "Dữ liệu theo giờ" : timeFilter === "Week" ? "Dữ liệu theo ngày" : "Tổng quan tháng"}
             </p>
           </div>
           <div className="text-right">
             <p className="text-2xl font-bold text-primary">
               {sensorData[selectedSensor]}{getUnit()}
             </p>
-            <p className="text-xs text-muted-foreground">Current</p>
+            <p className="text-xs text-muted-foreground">Hiện tại</p>
           </div>
         </div>
         
         {!showSourceData ? (
           <>
             {timeFilter !== "Month" ? (
-              <div className="h-48">
+              <div className="h-56">
                 <ResponsiveContainer width="100%" height="100%">
                   {isWaterSelected ? (
                     <BarChart 
                       data={waterBarData as { time: string; value: number }[]}
-                      margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                      margin={{ top: 25, right: 10, left: 0, bottom: 5 }}
                     >
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                       <XAxis 
                         dataKey="time" 
                         tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
                         axisLine={{ stroke: "hsl(var(--border))" }}
+                        padding={{ left: 20, right: 20 }}
                       />
                       <YAxis 
+                        width={40}
                         tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
                         axisLine={{ stroke: "hsl(var(--border))" }}
+                        domain={["dataMin - 10", "dataMax + 10"]}
                       />
                       <Tooltip 
                         contentStyle={{ 
@@ -2351,28 +2498,37 @@ function AnalyticsTab({
                           borderRadius: "8px",
                           fontSize: "12px"
                         }}
-                        formatter={(value: number) => [`${value}L`, "Water Used"]}
+                        formatter={(value: number) => [`${value}L`, "Lượng nước"]}
                       />
                       <Bar 
                         dataKey="value" 
                         fill="hsl(var(--primary))" 
                         radius={[4, 4, 0, 0]}
-                      />
+                      >
+                        <LabelList 
+                          dataKey="value" 
+                          position="top" 
+                          className="text-[10px] fill-slate-500"
+                        />
+                      </Bar>
                     </BarChart>
                   ) : (
                     <LineChart 
                       data={chartData as { time: string; value: number }[]}
-                      margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                      margin={{ top: 25, right: 10, left: 0, bottom: 5 }}
                     >
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                       <XAxis 
                         dataKey="time" 
                         tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
                         axisLine={{ stroke: "hsl(var(--border))" }}
+                        padding={{ left: 20, right: 20 }}
                       />
                       <YAxis 
+                        width={40}
                         tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
                         axisLine={{ stroke: "hsl(var(--border))" }}
+                        domain={["dataMin - 5", "dataMax + 5"]}
                       />
                       <Tooltip 
                         contentStyle={{ 
@@ -2402,7 +2558,13 @@ function AnalyticsTab({
                         strokeWidth={2}
                         dot={{ fill: "hsl(var(--primary))", strokeWidth: 0, r: 4 }}
                         activeDot={{ r: 6, fill: "hsl(var(--primary))" }}
-                      />
+                      >
+                        <LabelList 
+                          dataKey="value" 
+                          position="top" 
+                          className="text-[10px] fill-slate-500"
+                        />
+                      </Line>
                     </LineChart>
                   )}
                 </ResponsiveContainer>
@@ -2417,10 +2579,10 @@ function AnalyticsTab({
               <thead className="sticky top-0 bg-card">
                 <tr className="border-b border-border">
                   <th className="text-left py-2 px-3 text-muted-foreground font-medium">
-                    {timeFilter === "Month" ? "Day" : "Time"}
+                    {timeFilter === "Month" ? "Ngày" : "Thời gian"}
                   </th>
                   <th className="text-right py-2 px-3 text-muted-foreground font-medium">
-                    Value ({getUnit()})
+                    Giá trị ({getUnit()})
                   </th>
                 </tr>
               </thead>
@@ -2428,7 +2590,7 @@ function AnalyticsTab({
                 {(isWaterSelected ? waterBarData : chartData as { time?: string; day?: number; value: number }[]).map((item, i) => (
                   <tr key={i} className="border-b border-border/50">
                     <td className="py-2 px-3 text-foreground">
-                      {timeFilter === "Month" ? `Day ${(item as { day: number }).day}` : (item as { time: string }).time}
+                      {timeFilter === "Month" ? `Ngày ${(item as { day: number }).day}` : (item as { time: string }).time}
                     </td>
                     <td className="py-2 px-3 text-right text-foreground font-medium">
                       {item.value}
@@ -2445,14 +2607,14 @@ function AnalyticsTab({
           className="w-full mt-4 flex items-center justify-center gap-2 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <Table className="w-4 h-4" />
-          {showSourceData ? "View Chart" : "View Source Data"}
+          {showSourceData ? "Xem biểu đồ" : "Xem dữ liệu gốc"}
         </button>
       </section>
 
       {/* Contextual Summary Insights */}
       <section className="space-y-3">
         <h2 className="text-sm font-medium text-muted-foreground">
-          {isWaterSelected ? "Water Usage Summary" : `${getSensorLabel()} Summary`}
+          {isWaterSelected ? "Tổng kết lượng nước" : `Tổng kết ${getSensorLabel().toLowerCase()}`}
         </h2>
         <div className="grid grid-cols-3 gap-3">
           {summaryInsights.items.map((item, index) => (
