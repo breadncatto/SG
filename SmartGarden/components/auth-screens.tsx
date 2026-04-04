@@ -1,12 +1,12 @@
 "use client"
 
 import { useState } from "react"
-import { Sprout, ArrowLeft, AlertCircle, Eye, EyeOff, Check, Loader2 } from "lucide-react"
+import { Sprout, ArrowLeft, AlertCircle, Eye, EyeOff, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 
-const API_BASE_URL = "http://localhost:8080"
+const API_BASE_URL = "https://mac4tpet6z.ap-southeast-1.awsapprunner.com"
 
 export function WelcomeScreen({ onLogin, onRegister }: any) {
   return (
@@ -50,24 +50,15 @@ export function LoginScreen({ form, setForm, onBack, onLoginSuccess, onSwitchToR
         const response = await fetch(`${API_BASE_URL}/auth/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username: form.username, password: form.password })
+          body: JSON.stringify({ username: form.username, password: form.password }) // BE AuthenticationRequest yêu cầu username
         })
         
-        const text = await response.text()
-        let data;
-        try {
-          data = JSON.parse(text)
-        } catch(e) {
-          setServerError("Server returned an invalid response. API endpoint might be incorrect or down.")
-          setIsLoading(false)
-          return
-        }
-
         if (response.ok) {
+          const data = await response.json()
           if(data.token) localStorage.setItem("token", data.token)
           onLoginSuccess(data)
         } else {
-          setServerError(data.message || "Invalid username or password")
+          setServerError("Invalid username or password")
         }
       } catch (error) {
         setServerError("Network error. Please check your connection.")
@@ -149,20 +140,18 @@ export function RegisterScreen({ form, setForm, onBack, onRegisterSuccess, onSwi
         const response = await fetch(`${API_BASE_URL}/api/user`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fullName: form.fullName, email: form.email, userName: form.username, password: form.password })
+          body: JSON.stringify({ 
+            fullName: form.fullName, 
+            email: form.email, 
+            userName: form.username, // BE CreateUserRequest yêu cầu trường userName
+            password: form.password 
+          })
         })
-
-        const text = await response.text()
         
         if (response.ok) {
           onRegisterSuccess()
         } else {
-          try {
-            const data = JSON.parse(text)
-            setServerError(data.message || "Registration failed. Username or email might already exist.")
-          } catch(e) {
-            setServerError(text || "Registration failed. API Server error.")
-          }
+          setServerError("Registration failed. Username or email might already exist.")
         }
       } catch (err) {
         setServerError("Network error. Please try again later.")
