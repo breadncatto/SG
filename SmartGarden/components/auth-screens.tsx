@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 
-const API_BASE_URL = "https://mac4tpet6z.ap-southeast-1.awsapprunner.com"
+const API_BASE_URL = "http://localhost:8080"
 
 export function WelcomeScreen({ onLogin, onRegister }: any) {
   return (
