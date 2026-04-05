@@ -7,7 +7,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
-// Helper component for rendering individual metric cards
 const MetricCard = ({ id, icon, title, value, unit, tooltip, valueColor = "text-foreground", activeTooltip, setActiveTooltip }: any) => {
   const isActive = activeTooltip === id;
   return (
@@ -48,7 +47,6 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
   const activeDate = timeView === "Day" ? dayDate : timeView === "Week" ? weekDate : monthDate
   const today = new Date()
 
-  // --- Navigation Logic ---
   const navigateTime = (direction: "prev" | "next") => {
     setActiveTooltip(null);
     const modifier = direction === "next" ? 1 : -1
@@ -113,11 +111,9 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
 
   const isWater = selectedSensor === "waterVolume";
   
-  // Real API Data Parser
   const chartData = useMemo(() => {
     const apiData = actualSensor?.historyData || [];
-    
-    // Helper to calculate aggregate sum/avg
+
     const aggregate = (dataList: any[]) => {
       if (!dataList || dataList.length === 0) return 0;
       const sum = dataList.reduce((acc, curr) => acc + (isWater ? (curr.waterVolume || curr.water_volume || curr.value || 0) : (curr.value || 0)), 0);
@@ -170,7 +166,6 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
     return []
   }, [timeView, activeDate, selectedSensor, actualSensor, isWater]);
 
-  // Real Metrics & Trend Calculations
   const metrics = useMemo(() => {
     if (!chartData || chartData.length === 0) return null;
     const values = chartData.map((d: any) => d.value);
@@ -193,7 +188,6 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
     const hoursPerItem = timeView === "Day" ? 4 : timeView === "Week" ? 24 : 24;
     const outOfBoundHours = outOfBoundItems * hoursPerItem;
 
-    // Period over Period Trend Calculation
     const apiData = actualSensor?.historyData || [];
     let prevSum = 0, prevAvg = 0, trendValue = 0;
 
@@ -233,7 +227,6 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
       }
     }
 
-    // Pump count estimation if real data does not contain distinct IDs
     const pumpCycles = isWater ? values.filter(v => v > 0).length : 0;
 
     return {
@@ -279,7 +272,7 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
 
   return (
     <div className="space-y-5 pb-8 animate-in fade-in slide-in-from-bottom-4 duration-500" onClick={() => setActiveTooltip(null)}>
-      {/* Category Tabs */}
+      {}
       <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
         {[{ id: "temp", icon: Thermometer, label: "Temperature" }, { id: "moisture", icon: Droplets, label: "Moisture" }, { id: "light", icon: Sun, label: "Light" }, { id: "waterVolume", icon: Beaker, label: "Water" }].map(cat => (
           <button key={cat.id} onClick={() => { setSelectedSensor(cat.id); setActiveTooltip(null); }} className={cn("flex items-center gap-1.5 px-3 py-2 rounded-full whitespace-nowrap transition-all border", selectedSensor === cat.id ? "bg-primary text-primary-foreground border-primary font-semibold shadow-md" : "bg-card text-foreground border-border hover:bg-muted")}>
@@ -288,7 +281,7 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
         ))}
       </div>
 
-      {/* Date Navigation */}
+      {}
       <section className="flex flex-col items-center justify-center mb-2 space-y-4">
         <div className="flex bg-card rounded-full p-1 border border-border shadow-sm">
           {[{id: "Day", label: "Day"}, {id: "Week", label: "Week"}, {id: "Month", label: "Month"}].map((view: any) => (
@@ -305,7 +298,7 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
         </div>
       </section>
 
-      {/* Analytics Data Grid */}
+      {}
       {metrics && (
         <section className="space-y-4">
           <div className="bg-card rounded-3xl p-6 border border-border flex flex-col items-center justify-center relative overflow-hidden shadow-sm">
@@ -352,7 +345,7 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
         </section>
       )}
 
-      {/* Chart Section */}
+      {}
       <section className="bg-card rounded-3xl p-4 shadow-sm border border-border mt-4">
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4 ml-1">Timeline</h3>
         <div className={cn("w-full transition-all", timeView === "Month" ? "min-h-[250px]" : "h-48")}>
@@ -375,7 +368,7 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
         </div>
       </section>
 
-      {/* Source Data Modal */}
+      {}
       <Dialog open={showSourceData} onOpenChange={setShowSourceData}>
         <DialogContent className="max-w-md mx-4 rounded-3xl bg-card border-border">
           <DialogHeader><DialogTitle className="text-foreground text-sm font-bold">Data: {dateLabel}</DialogTitle></DialogHeader>
@@ -414,3 +407,5 @@ export function EmptyStateAnalytics() {
     </div>
   )
 }
+
+//Unanananânâ

@@ -133,7 +133,7 @@ export function SmartGarden() {
           } catch (e) { sensors[i].status = "Offline" }
         }
 
-        // Fetch Pump Log (Water Volume Data)
+        // Fetch Pump Log 
         const waterVirtualSensor: any = {
           id: "water_volume_id", type: "waterVolume", macId: "Pump Log", connectId: pumpId, status: "Online", historyData: []
         };
@@ -142,7 +142,6 @@ export function SmartGarden() {
           if (logRes.data) waterVirtualSensor.historyData = logRes.data;
         } catch (e) {
           try {
-             // Fallback endpoint
              const logRes2 = await api.get(`/api/pump-log/pump/${pumpId}`);
              if (logRes2.data) waterVirtualSensor.historyData = logRes2.data;
           } catch (e2) {}
@@ -286,7 +285,7 @@ export function SmartGarden() {
 
   return (
     <div className="max-w-md mx-auto min-h-screen relative overflow-hidden bg-background flex flex-col">
-      {/* HEADER & TOPBAR */}
+      {/* header + topbar */}
       <header className="px-5 pt-6 pb-4 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
           <div><p className="text-muted-foreground text-sm">Hello,</p><h1 className="text-xl font-semibold text-foreground">{currentUser?.fullName || "Farm Manager"}</h1></div>
@@ -321,21 +320,21 @@ export function SmartGarden() {
         )}
       </header>
 
-      {/* TABS VIEW */}
+      {/* view */}
       <main className="flex-1 overflow-y-auto px-5 pb-24">
         {activeTab === "home" && (hasPumps && selectedPump ? <DashboardTab sensorData={sensorData} mode={mode} onModeSwitch={() => {if(mode==="AUTO") setShowModeConfirm(true); else switchMode("AUTO")}} isPumpOn={isPumpOn} onPowerToggle={(s) => {setPendingPowerState(s); setShowPowerConfirm(true)}} onSensorClick={(s) => {setAnalyticsSensor(s); setActiveTab("analytics")}} thresholds={currentThresholds} sensors={selectedPump.sensors} onAddSensor={() => setShowAddSensor(true)} onDeleteSensor={handleDeleteSensor} allSensorsConnected={allSensorsConnected} /> : <EmptyState onAddPump={() => setShowAddPump(true)} />)}   
         {activeTab === "analytics" && (hasPumps ? <AnalyticsTab sensors={selectedPump?.sensors || []} selectedSensor={analyticsSensor} setSelectedSensor={setAnalyticsSensor} thresholds={currentThresholds} /> : <EmptyStateAnalytics />)}    
         {activeTab === "settings" && (hasPumps ? <SettingsTab thresholds={currentThresholds} onSaveThresholds={handleUpdateThresholds} onAddPump={() => setShowAddPump(true)} onDeletePump={handleDeletePump} /> : <EmptyStateSettings onAddPump={() => setShowAddPump(true)} />)}
       </main>
       
-      {/* NAVIGATION BAR */}
+      {/* nav bar */}
       <nav className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-foreground px-6 py-3 rounded-full shadow-lg z-40">
         {[{ id: "home" as const, icon: Home, label: "Home" }, { id: "analytics" as const, icon: BarChart3, label: "Stats" }, { id: "settings" as const, icon: Settings, label: "Config" }].map((tab) => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={cn("flex items-center gap-2 px-4 py-2 rounded-full transition-all", activeTab === tab.id ? "bg-primary text-primary-foreground" : "text-muted hover:text-card")}><tab.icon className="w-5 h-5" />{activeTab === tab.id && <span className="text-sm font-medium">{tab.label}</span>}</button>
         ))}
       </nav>
 
-      {/* DIALOGS */}
+      {/* dialog */}
       <div className={cn("fixed top-6 right-6 px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 transition-all duration-300 z-[9999]", toast.visible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4 pointer-events-none", toast.type === "error" ? "bg-destructive text-destructive-foreground" : "bg-foreground text-card")}>
         {toast.type === "error" ? <AlertCircle className="w-4 h-4" /> : <Check className="w-4 h-4 text-primary" />}
         <span className="text-sm font-medium">{toast.message}</span>
