@@ -69,7 +69,7 @@ export function SettingsTab({ thresholds, onSaveThresholds, onAddPump, onDeleteP
         <p className="text-xs text-muted-foreground leading-relaxed">Version 1.0.0 - IoT Pump Management System for smart agriculture and gardening.</p>
       </section>
 
-      {/* Modal Confirm Delete */}
+      {/* delete modal conferm */}
       <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <DialogContent className="max-w-md mx-4 rounded-3xl bg-card border-border">
           <DialogHeader>
