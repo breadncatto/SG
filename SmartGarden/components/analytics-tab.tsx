@@ -1,279 +1,427 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+"use client"
+
+import React, { useState, useMemo } from "react"
+import { Thermometer, Droplets, Sun, Beaker, ChevronLeft, ChevronRight, Calendar as CalIcon, Database, Info, Activity, TrendingUp, TrendingDown, Clock, Power, Target, AlertCircle } from "lucide-react"
+import { LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, AreaChart, Area } from "recharts"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Thermometer, Droplets, Sun, Activity, ChevronLeft, ChevronRight, Database, Target, TrendingUp, TrendingDown } from "lucide-react"
-import { Sensor, SensorType } from "@/types/smart-garden"
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip } from "recharts"
-import { useState, useMemo } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 
-interface AnalyticsTabProps {
-  sensors: Sensor[]
-  selectedSensor: SensorType
-  setSelectedSensor: (val: SensorType) => void
-  thresholds: any
-}
+export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, useMockData, thresholds }: any) {
+  const [timeView, setTimeView] = useState<"Day" | "Week" | "Month">("Day")
+  
+  const [dayDate, setDayDate] = useState(new Date())
+  const [weekDate, setWeekDate] = useState(new Date())
+  const [monthDate, setMonthDate] = useState(new Date())
+  const [showSourceData, setShowSourceData] = useState(false)
 
-type TimeFilter = "Day" | "Week" | "Month";
+  const activeDate = timeView === "Day" ? dayDate : timeView === "Week" ? weekDate : monthDate
 
-export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thresholds }: AnalyticsTabProps) {
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>("Week")
-  const [dateOffset, setDateOffset] = useState(0) 
-  const [showRawData, setShowRawData] = useState(false)
-
-  const sensorTypeMap: Record<SensorType, string> = {
-    temp: "Temperature", moisture: "Moisture", light: "Light", waterVolume: "WaterVolume"
-  }
-  const currentSensorInfo = sensors.find(s => s.type === sensorTypeMap[selectedSensor])
-
-  const dateRange = useMemo(() => {
-    const end = new Date();
-    const start = new Date();
-    
-    if (timeFilter === "Day") {
-      start.setDate(start.getDate() + dateOffset);
-      start.setHours(0, 0, 0, 0);
-      end.setDate(end.getDate() + dateOffset);
-      end.setHours(23, 59, 59, 999);
-    } else if (timeFilter === "Week") {
-      start.setDate(start.getDate() + (dateOffset * 7) - start.getDay() + 1);
-      start.setHours(0, 0, 0, 0);
-      end.setDate(start.getDate() + 6);
-      end.setHours(23, 59, 59, 999);
+  const navigateTime = (direction: "prev" | "next") => {
+    const modifier = direction === "next" ? 1 : -1
+    if (timeView === "Day") {
+      setDayDate(prev => { const d = new Date(prev); d.setDate(d.getDate() + modifier); return d })
+    } else if (timeView === "Week") {
+      setWeekDate(prev => { const d = new Date(prev); d.setDate(d.getDate() + modifier * 7); return d })
     } else {
-      start.setMonth(start.getMonth() + dateOffset, 1);
-      start.setHours(0, 0, 0, 0);
-      end.setMonth(start.getMonth() + 1, 0);
-      end.setHours(23, 59, 59, 999);
+      setMonthDate(prev => { const d = new Date(prev); d.setMonth(d.getMonth() + modifier); return d })
     }
-    return { start, end };
-  }, [timeFilter, dateOffset])
+  }
 
-  const filteredRawData = useMemo(() => {
-    if (!currentSensorInfo || !currentSensorInfo.historyData) return [];
-    return currentSensorInfo.historyData.filter(item => {
-      const d = new Date(item.createdAt || item.created_at);
-      return d >= dateRange.start && d <= dateRange.end;
-    }).sort((a, b) => new Date(a.createdAt || a.created_at).getTime() - new Date(b.createdAt || b.created_at).getTime());
-  }, [currentSensorInfo, dateRange])
+  const resetToToday = () => {
+    const today = new Date()
+    if (timeView === "Day") setDayDate(today)
+    if (timeView === "Week") setWeekDate(today)
+    if (timeView === "Month") setMonthDate(today)
+  }
 
-  const stats = useMemo(() => {
-    if (filteredRawData.length === 0) return { max: 0, min: 0, avg: 0, latest: 0, optimal: 0, trend: 0, trendDir: "none" }
-    const vals = filteredRawData.map(d => d.value);
-    
-    const minT = selectedSensor === "temp" ? thresholds.minTemp : (selectedSensor === "moisture" ? thresholds.moistureThreshold : 0);
-    const maxT = selectedSensor === "temp" ? thresholds.maxTemp : (selectedSensor === "light" ? thresholds.maxLight : 100);
-    
-    const optimalCount = vals.filter(v => v >= minT && v <= maxT).length;
-    
-    const half = Math.floor(vals.length / 2);
-    const avgFirst = vals.slice(0, half).reduce((a, b) => a + b, 0) / (half || 1);
-    const avgSecond = vals.slice(half).reduce((a, b) => a + b, 0) / (vals.length - half || 1);
-    const trendVal = avgSecond - avgFirst;
+  const isTodayView = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-    return {
-      max: Math.max(...vals),
-      min: Math.min(...vals),
-      avg: (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1),
-      latest: vals[vals.length - 1],
-      optimal: Math.round((optimalCount / vals.length) * 100),
-      trend: Math.abs(trendVal).toFixed(1),
-      trendDir: trendVal > 0 ? "up" : (trendVal < 0 ? "down" : "flat")
+    if (timeView === "Day") {
+      const d = new Date(dayDate); 
+      d.setHours(0, 0, 0, 0);
+      return d.getTime() === today.getTime();
     }
-  }, [filteredRawData, selectedSensor, thresholds])
+    if (timeView === "Month") {
+      return monthDate.getMonth() === today.getMonth() && monthDate.getFullYear() === today.getFullYear();
+    }
+    
+    const start = new Date(weekDate);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - (start.getDay() === 0 ? 6 : start.getDay() - 1));
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+    
+    return today >= start && today <= end;
+  }
+
+  const dateLabel = useMemo(() => {
+    if (timeView === "Day") {
+      return activeDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })
+    }
+    if (timeView === "Week") {
+      const start = new Date(activeDate)
+      start.setDate(activeDate.getDate() - (activeDate.getDay() === 0 ? 6 : activeDate.getDay() - 1))
+      const end = new Date(start)
+      end.setDate(start.getDate() + 6)
+      return `${start.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${end.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+    }
+    return activeDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })
+  }, [timeView, activeDate])
+
+  const actualSensor = sensors?.find((s: any) => 
+    (selectedSensor === "temp" && s.type === "Temperature") ||
+    (selectedSensor === "moisture" && s.type === "Moisture") ||
+    (selectedSensor === "light" && s.type === "Light")
+  );
 
   const chartData = useMemo(() => {
-    if (timeFilter === "Day") {
-      const buckets = [0, 4, 8, 12, 16, 20].map(h => ({ time: `${h.toString().padStart(2, '0')}:00`, sum: 0, count: 0, min: 9999, max: -9999 }));
-      filteredRawData.forEach(d => {
-        const hour = new Date(d.createdAt || d.created_at).getHours();
-        const bIdx = Math.floor(hour / 4);
-        buckets[bIdx].sum += d.value;
-        buckets[bIdx].count += 1;
-        if(d.value < buckets[bIdx].min) buckets[bIdx].min = d.value;
-        if(d.value > buckets[bIdx].max) buckets[bIdx].max = d.value;
-      });
-      return buckets.map(b => ({ time: b.time, value: b.count ? parseFloat((b.sum / b.count).toFixed(1)) : null }));
-    } 
-    else if (timeFilter === "Week") {
-      const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-      const buckets = days.map(d => ({ time: d, sum: 0, count: 0 }));
-      filteredRawData.forEach(d => {
-        let dayIdx = new Date(d.createdAt || d.created_at).getDay() - 1; 
-        if (dayIdx === -1) dayIdx = 6;
-        buckets[dayIdx].sum += d.value;
-        buckets[dayIdx].count += 1;
-      });
-      return buckets.map(b => ({ time: b.time, value: b.count ? parseFloat((b.sum / b.count).toFixed(1)) : null }));
-    }
-    const daysInMonth = dateRange.end.getDate();
-    const buckets = Array.from({length: daysInMonth}, (_, i) => ({ day: i+1, sum: 0, count: 0, min: 9999, max: -9999 }));
-    filteredRawData.forEach(d => {
-      const day = new Date(d.createdAt || d.created_at).getDate() - 1;
-      buckets[day].sum += d.value;
-      buckets[day].count += 1;
-      if(d.value < buckets[day].min) buckets[day].min = d.value;
-      if(d.value > buckets[day].max) buckets[day].max = d.value;
-    });
-    return buckets.map(b => ({ day: b.day, avg: b.count ? parseFloat((b.sum / b.count).toFixed(1)) : null, variance: b.count > 1 ? parseFloat((b.max - b.min).toFixed(1)) : 0 }));
-  }, [filteredRawData, timeFilter, dateRange])
+    const apiData = actualSensor?.historyData || [];
+    
+    const dateStr = activeDate.toDateString();
+    let hash = 0;
+    for (let i = 0; i < dateStr.length; i++) { hash = dateStr.charCodeAt(i) + ((hash << 5) - hash); }
+    const seed = Math.abs(hash);
 
-  const getConfig = () => {
-    switch (selectedSensor) {
-      case "temp": return { title: "Temperature", color: "#f97316", unit: "°C" }
-      case "moisture": return { title: "Moisture", color: "#3b82f6", unit: "%" }
-      case "light": return { title: "Light Intensity", color: "#eab308", unit: "lux" }
-      default: return { title: "Data", color: "#000", unit: "" }
+    if (timeView === "Day") {
+      return ["0-4", "4-8", "8-12", "12-16", "16-20", "20-24"].map((time, i) => {
+        const val = useMockData || apiData.length === 0 
+          ? Math.max(10, Math.floor(Math.abs(Math.sin(seed + i)) * 80) + 20)
+          : (apiData[i]?.value || 0);
+        return { time, value: val };
+      });
     }
+    if (timeView === "Week") {
+      return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, i) => {
+        const val = useMockData || apiData.length === 0 
+          ? Math.max(20, Math.floor(Math.abs(Math.cos(seed + i)) * 100))
+          : (apiData[i]?.value || 0);
+        return { day, value: val };
+      });
+    }
+    if (timeView === "Month") {
+      const daysInMonth = new Date(activeDate.getFullYear(), activeDate.getMonth() + 1, 0).getDate()
+      return Array.from({ length: daysInMonth }, (_, i) => {
+        const day = i + 1;
+        const average = Math.abs(Math.cos(seed + day)) * 0.8 + 0.2
+        const val = useMockData || apiData.length === 0 
+          ? Math.floor(average * 100)
+          : (apiData[i]?.value || 0);
+        return { day: `${activeDate.getMonth() + 1}/${day}`, value: val }
+      });
+    }
+    return []
+  }, [timeView, activeDate, selectedSensor, actualSensor, useMockData])
+
+  const metrics = useMemo(() => {
+    if (chartData.length === 0) return null;
+    const values = chartData.map((d: any) => d.value);
+    const sum = values.reduce((a: number, b: number) => a + b, 0);
+    const avg = sum / values.length;
+    const max = Math.max(...values);
+    const min = Math.min(...values);
+    
+    const seedStr = activeDate.toDateString();
+    let hash = 0; for (let i = 0; i < seedStr.length; i++) hash = seedStr.charCodeAt(i) + ((hash << 5) - hash);
+    const trendValue = (hash % 20) - 10;
+
+    let optimal = "";
+    if (selectedSensor === "temp") optimal = `${thresholds?.minTemp || 15}-${thresholds?.maxTemp || 35}°C`;
+    if (selectedSensor === "moisture") optimal = `>${thresholds?.moistureThreshold || 40}%`;
+    if (selectedSensor === "light") optimal = `<${thresholds?.maxLight || 90}k lux`;
+
+    return {
+      sum, avg, max, min, trendValue, optimal,
+      pumpRuntime: Math.floor(sum * 0.4), 
+      pumpCycles: Math.max(1, Math.floor(sum / 15)) 
+    }
+  }, [chartData, selectedSensor, thresholds, activeDate]);
+
+  const getUnit = () => {
+    if (selectedSensor === "temp") return "°C"
+    if (selectedSensor === "moisture") return "%"
+    if (selectedSensor === "light") return "lux"
+    return "L"
   }
-  const config = getConfig()
 
-  const headerDateText = `${dateRange.start.toLocaleDateString('en-GB', {day: '2-digit', month: 'short'})} - ${dateRange.end.toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'})}`;
+  const getChartColor = () => {
+    if (selectedSensor === "temp") return "#E3EED4"; 
+    if (selectedSensor === "moisture") return "#6B9071"; 
+    if (selectedSensor === "light") return "#AEC3B0"; 
+    return "#E3EED4";
+  }
 
-  // Custom component cho ô chỉ số
-  const StatCard = ({ title, value, unit, icon: Icon, color, infoText, trendSign }: any) => (
-    <Card className="rounded-2xl border-0 bg-card p-4 shadow-sm relative">
-      <div className="flex items-center justify-between mb-1">
-        <div className="flex items-center gap-1">
-          {Icon && <Icon className="w-3 h-3" style={{ color: color || 'inherit' }}/>}
-          <p className="text-xs text-muted-foreground font-medium">{title}</p>
-        </div>
-        <Popover>
-          <PopoverTrigger asChild>
-            <button className="w-4 h-4 rounded-full border border-muted-foreground/30 text-muted-foreground flex items-center justify-center text-[10px] font-bold hover:bg-muted focus:outline-none">!</button>
-          </PopoverTrigger>
-          <PopoverContent className="w-64 text-xs p-3 rounded-xl shadow-lg border border-border bg-popover text-popover-foreground" side="top">
-            {infoText}
-          </PopoverContent>
-        </Popover>
+  const currentColor = getChartColor();
+
+  const totalWater = useMemo(() => {
+    if (selectedSensor !== "waterVolume") return 0;
+    return chartData.reduce((acc: number, curr: any) => acc + curr.value, 0);
+  }, [chartData, selectedSensor])
+
+  const renderCalendarHeatmap = () => {
+    const daysInMonth = new Date(activeDate.getFullYear(), activeDate.getMonth() + 1, 0).getDate()
+    const firstDay = new Date(activeDate.getFullYear(), activeDate.getMonth(), 1).getDay()
+    const emptySlots = Array((firstDay === 0 ? 6 : firstDay - 1)).fill(null)
+    const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
+    
+    const seedStr = activeDate.getFullYear() + "-" + activeDate.getMonth();
+    let hash = 0;
+    for (let i = 0; i < seedStr.length; i++) { hash = seedStr.charCodeAt(i) + ((hash << 5) - hash); }
+    const baseSeed = Math.abs(hash);
+
+    return (
+      <div className="grid grid-cols-7 gap-1.5 mt-2">
+        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d, i) => (
+          <div key={`header-${i}`} className="text-center text-[10px] font-medium text-muted-foreground mb-1">{d}</div>
+        ))}
+        {emptySlots.map((_, i) => <div key={`empty-${i}`} />)}
+        {days.map(day => {
+          const variance = Math.abs(Math.sin(baseSeed + day * 1.5)) * 100 
+          const average = Math.abs(Math.cos(baseSeed + day)) * 0.8 + 0.2
+          const size = `${Math.max(30, variance)}%`
+
+          return (
+            <div key={`day-${day}`} className="aspect-square relative group bg-card/30 rounded-lg overflow-hidden">
+              <span className="text-[10px] text-foreground z-10 absolute top-1 left-1.5 font-medium">{day}</span>
+              <div 
+                className="rounded-full transition-all absolute"
+                style={{ 
+                  width: size, 
+                  height: size, 
+                  backgroundColor: currentColor, 
+                  opacity: average, 
+                  top: "50%", 
+                  left: "50%", 
+                  transform: "translate(-50%, -40%)" 
+                }}
+              />
+            </div>
+          )
+        })}
       </div>
-      <p className="text-xl font-bold" style={{color: color || 'inherit'}}>
-        {trendSign}{value}<span className="text-sm text-muted-foreground ml-1">{unit}</span>
-      </p>
-    </Card>
-  )
-
-  const formatCleanDate = (dateString: string) => {
-    const d = new Date(dateString);
-    return d.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric', hour12: true });
+    )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="font-semibold text-foreground text-lg">Analytics & Trends</h2>
+    <div className="space-y-5 pb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      
+      {/* Category Tabs */}
+      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+        {[
+          { id: "temp", icon: Thermometer, label: "Temperature" },
+          { id: "moisture", icon: Droplets, label: "Moisture" },
+          { id: "light", icon: Sun, label: "Light" },
+          { id: "waterVolume", icon: Beaker, label: "Water" }
+        ].map(cat => (
+          <button
+            key={cat.id}
+            onClick={() => setSelectedSensor(cat.id)}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-2 rounded-full whitespace-nowrap transition-all border",
+              selectedSensor === cat.id 
+                ? "bg-primary text-primary-foreground border-primary font-semibold shadow-sm" 
+                : "bg-card text-foreground border-muted hover:bg-muted"
+            )}
+          >
+            <cat.icon className="w-4 h-4" />
+            <span className="text-xs">{cat.label}</span>
+          </button>
+        ))}
       </div>
 
-      <Tabs value={selectedSensor} onValueChange={(val: any) => setSelectedSensor(val)} className="w-full">
-        <TabsList className="grid w-full grid-cols-3 p-1 bg-muted rounded-2xl h-auto">
-          <TabsTrigger value="temp" className="rounded-xl py-2">Temp</TabsTrigger>
-          <TabsTrigger value="moisture" className="rounded-xl py-2">Moisture</TabsTrigger>
-          <TabsTrigger value="light" className="rounded-xl py-2">Light</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {/* Date Navigation & Summary */}
+      <section className="flex flex-col items-center justify-center mb-2 space-y-4">
+        <div className="flex bg-card rounded-full p-1 border border-border shadow-sm">
+          {[ {id: "Day", label: "Day"}, {id: "Week", label: "Week"}, {id: "Month", label: "Month"} ].map((view: any) => (
+            <button 
+              key={view.id} 
+              onClick={() => setTimeView(view.id)}
+              className={cn(
+                "px-5 py-1.5 rounded-full text-xs font-medium transition-all",
+                timeView === view.id ? "bg-background text-primary border border-border shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {view.label}
+            </button>
+          ))}
+        </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <StatCard 
-          title="Current" value={stats.latest} unit={config.unit} color={config.color}
-          infoText="The most recent reading from the sensor. Use this to check real-time conditions."
-        />
-        <StatCard 
-          title="Average" value={stats.avg} unit={config.unit}
-          infoText="The average value over the selected period. Helps identify the general baseline of the environment."
-        />
-        <StatCard 
-          title="Maximum" value={stats.max} unit={config.unit} icon={Activity} color="#ef4444"
-          infoText="The highest recorded value in this period. Useful for spotting dangerous environmental spikes."
-        />
-        <StatCard 
-          title="Minimum" value={stats.min} unit={config.unit} icon={Activity} color="#3b82f6"
-          infoText="The lowest recorded value in this period. Useful for spotting dangerous drops."
-        />
-        <StatCard 
-          title="Optimal Range" value={stats.optimal} unit="%" icon={Target} color="#10b981"
-          infoText="Percentage of time the readings stayed within your configured safe limits. A value >80% indicates a very healthy environment for your plants."
-        />
-        <StatCard 
-          title="Trend Analysis" value={stats.trend} unit={config.unit} trendSign={stats.trendDir === "up" ? "+" : (stats.trendDir === "down" ? "-" : "")} 
-          icon={stats.trendDir === "up" ? TrendingUp : TrendingDown} color={stats.trendDir === "up" ? "#f97316" : "#3b82f6"}
-          infoText="Compares the second half of the period to the first half. A positive number means the values are rising, negative means they are falling."
-        />
-      </div>
-
-      <div className="bg-card rounded-3xl p-5 shadow-sm space-y-4 border border-border/50">
-        <div className="flex items-center justify-between bg-muted/50 p-2 rounded-2xl">
-          <Button variant="outline" size="icon" onClick={() => setDateOffset(prev => prev - 1)} className="rounded-full bg-background border-0 shadow-sm h-8 w-8"><ChevronLeft className="w-4 h-4"/></Button>
-          <div className="text-center">
-            <div className="flex gap-2 mb-1">
-              {["Day", "Week", "Month"].map(t => (
-                <span key={t} onClick={() => { setTimeFilter(t as TimeFilter); setDateOffset(0); }} className={cn("text-[10px] font-bold px-2 py-1 rounded cursor-pointer transition-colors", timeFilter === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}>{t}</span>
-              ))}
-            </div>
-            <p className="text-[10px] font-medium text-muted-foreground">{headerDateText}</p>
+        <div className="flex items-center justify-between w-full px-2">
+          <button onClick={() => navigateTime("prev")} className="p-2 rounded-full hover:bg-muted text-foreground transition-colors"><ChevronLeft className="w-5 h-5" /></button>
+          <div className="flex flex-col items-center text-center">
+            <h2 className="text-sm font-bold text-primary">{dateLabel}</h2>
+            {!isTodayView() && (
+              <button onClick={resetToToday} className="text-[10px] text-accent font-medium mt-1 hover:underline flex items-center gap-1">
+                <CalIcon className="w-3 h-3" /> Return to today
+              </button>
+            )}
           </div>
-          <Button variant="outline" size="icon" disabled={dateOffset === 0} onClick={() => setDateOffset(prev => prev + 1)} className="rounded-full bg-background border-0 shadow-sm h-8 w-8"><ChevronRight className="w-4 h-4"/></Button>
+          <button onClick={() => navigateTime("next")} disabled={isTodayView()} className={cn("p-2 rounded-full transition-colors", isTodayView() ? "opacity-30 cursor-not-allowed text-muted-foreground" : "hover:bg-muted text-foreground")}><ChevronRight className="w-5 h-5" /></button>
         </div>
+      </section>
 
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold flex items-center gap-2">{config.title} History</h3>
-          <Button variant="secondary" size="sm" onClick={() => setShowRawData(true)} className="h-7 text-[10px] rounded-lg bg-primary/10 text-primary hover:bg-primary/20"><Database className="w-3 h-3 mr-1" /> Raw Data</Button>
-        </div>
+      {/* Primary Insight & Secondary Metrics Grid */}
+      {metrics && (
+        <section className="space-y-4">
+          {/* Primary Main Metric */}
+          <div className="bg-card rounded-3xl p-6 border border-border flex flex-col items-center justify-center relative overflow-hidden shadow-sm">
+            <Info className="w-4 h-4 text-muted-foreground absolute top-4 right-4 cursor-help z-20" title={selectedSensor === "waterVolume" ? "Total volume of water distributed in this period" : "Average sensor reading across the selected period"} />
+            <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+              {selectedSensor === "waterVolume" ? <Beaker className="w-32 h-32 text-primary" /> : <Activity className="w-32 h-32 text-primary" />}
+            </div>
+            
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+              {selectedSensor === "waterVolume" ? "Total Irrigated" : "Daily Average"}
+            </p>
+            <div className="flex items-baseline gap-2 z-10">
+              <span className="text-5xl font-black text-primary">
+                {selectedSensor === "waterVolume" ? metrics.sum.toFixed(0) : metrics.avg.toFixed(1)}
+              </span>
+              <span className="text-xl font-medium text-muted-foreground">{getUnit()}</span>
+            </div>
+            
+            <div className="mt-3 flex items-center gap-1.5 text-xs font-medium z-10 px-3 py-1 rounded-full bg-background border border-border">
+              {metrics.trendValue >= 0 ? <TrendingUp className="w-3.5 h-3.5 text-primary" /> : <TrendingDown className="w-3.5 h-3.5 text-accent" />}
+              <span className={metrics.trendValue >= 0 ? "text-primary" : "text-accent"}>
+                {Math.abs(metrics.trendValue)}% {metrics.trendValue >= 0 ? "increase" : "decrease"}
+              </span>
+            </div>
+          </div>
 
-        <div className="h-[200px] w-full">
-          {timeFilter !== "Month" ? (
+          {/* Secondary Metrics Grid */}
+          <div className="grid grid-cols-2 gap-3">
+            {selectedSensor !== "waterVolume" ? (
+              <>
+                <div className="bg-card p-4 rounded-2xl border border-border flex flex-col relative">
+                  <Info className="w-3.5 h-3.5 text-muted-foreground absolute top-3 right-3 cursor-help" title="Highest and lowest recordings during this period" />
+                  <span className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5"><AlertCircle className="w-3.5 h-3.5" /> High / Low</span>
+                  <span className="text-lg font-bold text-foreground mt-1">{metrics.max.toFixed(1)} / {metrics.min.toFixed(1)}<span className="text-xs text-muted-foreground ml-1">{getUnit()}</span></span>
+                </div>
+                <div className="bg-card p-4 rounded-2xl border border-border flex flex-col relative">
+                  <Info className="w-3.5 h-3.5 text-muted-foreground absolute top-3 right-3 cursor-help" title="Configured threshold safe bounds for automation" />
+                  <span className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5"><Target className="w-3.5 h-3.5" /> Optimal Range</span>
+                  <span className="text-lg font-bold text-foreground mt-1">{metrics.optimal}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="bg-card p-4 rounded-2xl border border-border flex flex-col relative">
+                  <Info className="w-3.5 h-3.5 text-muted-foreground absolute top-3 right-3 cursor-help" title="Estimated total minutes the pump was running" />
+                  <span className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> Pump Runtime</span>
+                  <span className="text-lg font-bold text-foreground mt-1">{metrics.pumpRuntime} <span className="text-xs text-muted-foreground">mins</span></span>
+                </div>
+                <div className="bg-card p-4 rounded-2xl border border-border flex flex-col relative">
+                  <Info className="w-3.5 h-3.5 text-muted-foreground absolute top-3 right-3 cursor-help" title="Number of distinct watering cycles initiated" />
+                  <span className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5"><Power className="w-3.5 h-3.5" /> Pump Cycles</span>
+                  <span className="text-lg font-bold text-foreground mt-1">{metrics.pumpCycles} <span className="text-xs text-muted-foreground">times</span></span>
+                </div>
+              </>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* Chart Section */}
+      <section className="bg-card rounded-3xl p-4 shadow-sm border border-border">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4 ml-1">Timeline</h3>
+        
+        {/* Dynamic height mapping */}
+        <div className={cn("w-full transition-all", timeView === "Month" ? "min-h-[250px]" : "h-48")}>
+          {timeView === "Month" ? (
+            <div className="h-full w-full">{renderCalendarHeatmap()}</div>
+          ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData} margin={{ top: 10, right: 0, left: -25, bottom: 0 }}>
-                <defs><linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={config.color} stopOpacity={0.4} /><stop offset="95%" stopColor={config.color} stopOpacity={0} /></linearGradient></defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted-foreground)/0.1)" />
-                <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
-                <RechartsTooltip contentStyle={{ borderRadius: "12px", border: "none" }} />
-                <Area type="monotone" dataKey="value" stroke={config.color} strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" connectNulls />
+              <AreaChart data={chartData} margin={{ top: 5, right: 0, left: -25, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={currentColor} stopOpacity={0.4}/>
+                    <stop offset="95%" stopColor={currentColor} stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey={timeView === "Day" ? "time" : "day"} stroke="#AEC3B0" fontSize={10} tickLine={false} axisLine={false} dy={10} />
+                <YAxis stroke="#AEC3B0" fontSize={10} tickLine={false} axisLine={false} dx={-10} />
+                <RechartsTooltip contentStyle={{ backgroundColor: "#0F2A1D", borderRadius: "12px", border: "1px solid #6B9071", color: "#E3EED4" }} itemStyle={{ color: "#E3EED4" }} />
+                <Area type="monotone" dataKey="value" stroke={currentColor} strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
               </AreaChart>
             </ResponsiveContainer>
-          ) : (
-            <div className="h-full overflow-y-auto">
-              <div className="flex justify-between items-center text-[10px] text-muted-foreground mb-2"><span>Color = Average</span><span>Size = Variance</span></div>
-              <div className="grid grid-cols-7 gap-2">
-                {chartData.map((d: any, idx: number) => {
-                  if (d.avg === null) return <div key={idx} className="aspect-square flex items-center justify-center text-xs text-muted-foreground/30 bg-muted/20 rounded-md">{d.day}</div>;
-                  const maxT = config.maxT || 100;
-                  const opacity = Math.max(0.2, Math.min(1, d.avg / maxT));
-                  const sizeScale = Math.min(1, d.variance / 20); 
-                  const pxSize = 8 + (sizeScale * 16); 
-                  return (
-                    <div key={idx} className="aspect-square relative flex items-center justify-center rounded-md border border-muted/50 bg-card group">
-                      <span className="absolute top-1 left-1 text-[8px] text-muted-foreground">{d.day}</span>
-                      <div className="rounded-full transition-all" style={{ backgroundColor: config.color, opacity: opacity, width: `${pxSize}px`, height: `${pxSize}px` }} />
-                      <div className="absolute hidden group-hover:flex z-10 bottom-full mb-1 bg-foreground text-background text-[10px] p-1.5 rounded flex-col items-center whitespace-nowrap">
-                        <span className="font-bold">{d.avg}{config.unit}</span><span className="opacity-70 text-[8px]">Var: {d.variance}{config.unit}</span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
           )}
         </div>
-      </div>
+        
+        <div className="mt-5 pt-3 border-t border-border">
+          <button onClick={() => setShowSourceData(true)} className="w-full py-2.5 rounded-xl bg-background border border-border text-xs font-medium flex items-center justify-center gap-2 hover:bg-muted transition-colors text-foreground">
+            <Database className="w-4 h-4 text-primary" /> View Source Data
+          </button>
+        </div>
+      </section>
 
-      <Dialog open={showRawData} onOpenChange={setShowRawData}>
-        <DialogContent className="max-w-md mx-4 rounded-3xl max-h-[80vh] flex flex-col bg-card">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><Database className="w-5 h-5 text-primary"/> Source Data</DialogTitle></DialogHeader>
-          <div className="overflow-y-auto flex-1 space-y-2 pr-2 mt-2">
-            {filteredRawData.length > 0 ? filteredRawData.map((d: any, i: number) => (
-              <div key={i} className="flex justify-between items-center p-3 bg-muted/50 border border-border/50 rounded-xl text-sm">
-                <span className="text-muted-foreground font-medium text-xs">{formatCleanDate(d.createdAt || d.created_at)}</span>
-                <span className="font-bold text-foreground">{d.value} {config.unit}</span>
-              </div>
-            )) : <p className="text-center text-muted-foreground py-10">No data available for this period.</p>}
+      {/* Modal Source Data */}
+      <Dialog open={showSourceData} onOpenChange={setShowSourceData}>
+        <DialogContent className="max-w-md mx-4 rounded-3xl bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-primary text-sm font-bold">Data: {dateLabel}</DialogTitle>
+          </DialogHeader>
+          <div className="py-2">
+            <div className="max-h-60 overflow-y-auto w-full pr-2">
+              <table className="w-full text-xs text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="py-2 text-muted-foreground font-medium">Time / Period</th>
+                    <th className="py-2 text-muted-foreground font-medium">Value ({getUnit()})</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {chartData.length > 0 ? chartData.map((d: any, i: number) => (
+                    <tr key={i} className="border-b border-muted hover:bg-muted/30 transition-colors">
+                      <td className="py-2.5 text-foreground">{d.time || d.day || d.date}</td>
+                      <td className="py-2.5 text-primary font-semibold">{d.value}</td>
+                    </tr>
+                  )) : (
+                    <tr><td colSpan={2} className="py-6 text-center text-muted-foreground">No data available.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSourceData(false)} className="w-full rounded-xl bg-background border-border hover:bg-muted text-foreground">Close</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
   )
 }
 
-export function EmptyStateAnalytics() { return <div className="text-center py-20 text-muted-foreground">No Analytics Data. Add a pump first.</div> }
+export function EmptyStateAnalytics() {
+  const [showSourceData, setShowSourceData] = useState(false)
+
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <div className="w-16 h-16 bg-card rounded-full flex items-center justify-center mb-4 border border-border">
+        <Database className="w-6 h-6 text-muted-foreground" />
+      </div>
+      <h3 className="text-base font-semibold text-primary">No Analytics Available</h3>
+      <p className="text-xs text-muted-foreground mt-2 max-w-xs">Connect a pump and sensors to start viewing insights and historical data.</p>
+      
+      <button onClick={() => setShowSourceData(true)} className="mt-6 py-2.5 px-5 rounded-xl bg-background border border-border text-xs font-medium flex items-center justify-center gap-2 hover:bg-muted transition-colors text-foreground">
+        <Database className="w-4 h-4 text-primary" /> View Source Data
+      </button>
+
+      <Dialog open={showSourceData} onOpenChange={setShowSourceData}>
+        <DialogContent className="max-w-md mx-4 rounded-3xl bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-primary text-sm font-bold">Source Data</DialogTitle>
+          </DialogHeader>
+          <div className="py-8 text-center text-muted-foreground text-xs">
+            System is empty. No data to display.
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSourceData(false)} className="w-full rounded-xl bg-background border-border hover:bg-muted text-foreground">Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}

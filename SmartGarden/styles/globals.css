@@ -4,47 +4,51 @@
 
 @layer base {
   :root {
-    --background: 140 30% 98%; /* Xanh nhạt cực êm mắt cho nền */
-    --foreground: 140 50% 10%; /* Xanh đậm gần đen cho text */
-    --card: 0 0% 100%;
-    --card-foreground: 140 50% 10%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 140 50% 10%;
-    --primary: 142 76% 36%; /* Màu Xanh chủ đạo (Emerald/Green) */
-    --primary-foreground: 0 0% 100%;
-    --secondary: 140 20% 90%;
-    --secondary-foreground: 140 50% 10%;
-    --muted: 140 20% 92%;
-    --muted-foreground: 140 20% 40%;
-    --accent: 140 20% 90%;
-    --accent-foreground: 140 50% 10%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 140 20% 85%;
-    --input: 140 20% 85%;
-    --ring: 142 76% 36%;
-    --radius: 1rem;
-  }
+    --background: 151 47% 11%; 
+    --foreground: 86 42% 88%; 
+    --card: 114 24% 27%;
+    --card-foreground: 86 42% 88%;
 
-  .dark {
-    --background: 140 50% 5%;
-    --foreground: 140 20% 90%;
-    --card: 140 40% 8%;
-    --card-foreground: 140 20% 90%;
-    --popover: 140 40% 8%;
-    --popover-foreground: 140 20% 90%;
-    --primary: 142 70% 45%;
-    --primary-foreground: 140 50% 10%;
-    --secondary: 140 30% 15%;
-    --secondary-foreground: 140 20% 90%;
-    --muted: 140 30% 15%;
-    --muted-foreground: 140 20% 60%;
-    --accent: 140 30% 15%;
-    --accent-foreground: 140 20% 90%;
-    --destructive: 0 62% 30%;
+    --popover: 114 24% 27%;
+    --popover-foreground: 86 42% 88%;
+    --primary: 86 42% 88%;
+    --primary-foreground: 151 47% 11%;
+    --secondary: 130 15% 49%;
+    --secondary-foreground: 86 42% 88%;
+    --muted: 130 15% 49%;
+    --muted-foreground: 126 14% 73%;
+    --accent: 126 14% 73%;
+    --accent-foreground: 151 47% 11%;
+    --destructive: 0 75% 45%; 
     --destructive-foreground: 0 0% 100%;
-    --border: 140 30% 15%;
-    --input: 140 30% 15%;
-    --ring: 142 70% 45%;
+
+    --border: 130 15% 49%;
+    --input: 114 24% 27%;
+    --ring: 86 42% 88%;
+
+    --radius: 1.25rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #6B9071;
+    border-radius: 10px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #AEC3B0;
   }
 }
