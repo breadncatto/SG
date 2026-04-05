@@ -1,32 +1,60 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
 
 @layer base {
   :root {
-    --background: 151 47% 11%; 
-    --foreground: 86 42% 88%; 
-    --card: 114 24% 27%;
-    --card-foreground: 86 42% 88%;
-
-    --popover: 114 24% 27%;
-    --popover-foreground: 86 42% 88%;
-    --primary: 86 42% 88%;
-    --primary-foreground: 151 47% 11%;
-    --secondary: 130 15% 49%;
-    --secondary-foreground: 86 42% 88%;
-    --muted: 130 15% 49%;
-    --muted-foreground: 126 14% 73%;
-    --accent: 126 14% 73%;
-    --accent-foreground: 151 47% 11%;
-    --destructive: 0 75% 45%; 
-    --destructive-foreground: 0 0% 100%;
-
-    --border: 130 15% 49%;
-    --input: 114 24% 27%;
-    --ring: 86 42% 88%;
-
+    /* LIGHT MODE (Tuỳ chọn nếu bạn có toggle) */
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 142.1 76.2% 36.3%;
+    --primary-foreground: 355.7 100% 97.3%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 142.1 76.2% 36.3%;
     --radius: 1.25rem;
+  }
+
+  .dark {
+    /* Tối ưu hoá Dark Mode cho Smart Garden - Độ tương phản cao */
+    --background: 151 47% 7%;      /* Nền tối hơn để nổi bật nội dung */
+    --foreground: 120 20% 95%;     /* Trắng ngà, ám chút xanh nhẹ, rất dễ đọc */
+    --card: 151 30% 12%;           /* Sáng hơn nền một chút để tạo chiều sâu */
+    --card-foreground: 120 20% 95%;
+    --popover: 151 30% 12%;
+    --popover-foreground: 120 20% 95%;
+    
+    --primary: 142 70% 45%;        /* Xanh lá cây tươi, nổi bật cho các số liệu quan trọng */
+    --primary-foreground: 151 50% 5%;
+    
+    --secondary: 130 15% 25%;
+    --secondary-foreground: 120 20% 95%;
+    
+    --muted: 151 20% 18%;          /* Nền cho các nút/tab chưa active */
+    --muted-foreground: 130 15% 70%; /* Xám xanh sáng, đủ tương phản để đọc text phụ */
+    
+    --accent: 126 14% 25%;
+    --accent-foreground: 120 20% 95%;
+    
+    --destructive: 0 62.8% 40.6%;
+    --destructive-foreground: 0 85.7% 97.3%;
+    
+    --border: 151 20% 22%;         /* Viền mỏng, không quá gắt */
+    --input: 151 20% 22%;
+    --ring: 142 70% 45%;
   }
 }
 
@@ -45,10 +73,10 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: #6B9071;
+    background: hsl(142 70% 45% / 0.5);
     border-radius: 10px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #AEC3B0;
+    background: hsl(142 70% 45%);
   }
 }

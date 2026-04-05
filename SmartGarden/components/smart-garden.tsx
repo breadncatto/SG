@@ -34,14 +34,11 @@ export function SmartGarden() {
   const [showAlerts, setShowAlerts] = useState(false)
   const [showAddPump, setShowAddPump] = useState(false)
   const [showAddSensor, setShowAddSensor] = useState(false)
-  const [timeFilter, setTimeFilter] = useState<"Day" | "Week" | "Month">("Week")
   const [newPumpName, setNewPumpName] = useState("")
   const [newPumpMac, setNewPumpMac] = useState("") 
   const [newSensorType, setNewSensorType] = useState<"Temperature" | "Moisture" | "Light">("Temperature")
   const [newSensorMac, setNewSensorMac] = useState("") 
   
-  const [useMockData, setUseMockData] = useState(false)
-
   const [showModeConfirm, setShowModeConfirm] = useState(false)
   const [showPowerConfirm, setShowPowerConfirm] = useState(false)
   const [pendingPowerState, setPendingPowerState] = useState(false)
@@ -63,16 +60,8 @@ export function SmartGarden() {
   const currentThresholds = selectedPump?.thresholds || DEFAULT_THRESHOLDS
   const unreadAlerts = alertsList.filter((a) => a.unread).length
 
-  // -- KHAI BÁO FUNCTION CHUẨN XÁC ĐỂ TRÁNH LỖI REFERENCE --
   const handleLogout = () => { 
-    setAuthState("welcome"); 
-    setShowProfile(false); 
-    setPumps([]); 
-    setSelectedPump(null); 
-    setCurrentUser(null); 
-    setActiveTab("home"); 
-    localStorage.removeItem("token"); 
-    showToast("Logged out successfully!") 
+    setAuthState("welcome"); setShowProfile(false); setPumps([]); setSelectedPump(null); setCurrentUser(null); setActiveTab("home"); localStorage.removeItem("token"); showToast("Logged out successfully!") 
   }
 
   const showToast = (message: string, type: "success" | "error" = "success") => {
@@ -84,8 +73,7 @@ export function SmartGarden() {
     setIsLoadingPumps(true)
     try {
       const response = await api.get(`/api/pump/user/${userId}`)
-      const data = response.data
-      const formattedPumps: Pump[] = data.map((p: any) => ({
+      const formattedPumps: Pump[] = response.data.map((p: any) => ({
         id: p.id || p.pumpId,
         name: p.name || `Pump ${p.id}`,
         mac: `Connection ID: ${p.connectionId || "N/A"}`,
@@ -93,12 +81,7 @@ export function SmartGarden() {
         userId: p.userId,
         sensors: [],
         sensorData: { temp: 0, moisture: 0, light: 0, waterVolume: 0 },
-        thresholds: {
-          minTemp: p.temperatureMin || 15,
-          maxTemp: p.temperatureMax || 35,
-          moistureThreshold: p.moistureThreshold || 40,
-          maxLight: p.lightIntensityMax || 90
-        }
+        thresholds: { minTemp: p.temperatureMin || 15, maxTemp: p.temperatureMax || 35, moistureThreshold: p.moistureThreshold || 40, maxLight: p.lightIntensityMax || 90 }
       }))
       setPumps(formattedPumps)
       if (formattedPumps.length > 0) setSelectedPump(formattedPumps[0])
@@ -114,17 +97,13 @@ export function SmartGarden() {
        const res = await api.get(`/api/alert/user/${userId}`)
        if (res.data) {
          const formattedAlerts = res.data.map((a: any) => ({
-           id: a.id || a.alertId,
-           message: a.message || "Alert received",
-           time: new Date(a.createdAt || a.created_at).toLocaleString(),
-           unread: !a.isRead
+           id: a.id || a.alertId, message: a.message || "Alert received",
+           time: new Date(a.createdAt || a.created_at).toLocaleString(), unread: !a.isRead
          }))
          formattedAlerts.sort((a: any, b: any) => new Date(b.time).getTime() - new Date(a.time).getTime())
          setAlertsList(formattedAlerts)
        }
-     } catch (e) {
-       // Graceful fail
-     }
+     } catch (e) {}
   }
 
   useEffect(() => {
@@ -132,40 +111,47 @@ export function SmartGarden() {
       try {
         const deviceRes = await api.get(`/api/device/by-pump?pumpId=${pumpId}`)
         const devices = deviceRes.data
-        const sensors: Sensor[] = devices.map((d: any) => ({
+        const sensors: any[] = devices.map((d: any) => ({
           id: d.id,
           type: d.type === "TEMPERATURE" ? "Temperature" : d.type === "MOISTURE" ? "Moisture" : "Light",
-          macId: `ID: ${d.connectId}`,
-          connectId: d.connectId,
-          status: "Online",
-          historyData: []
+          macId: `ID: ${d.connectId}`, connectId: d.connectId, status: "Online", historyData: []
         }))
         
         let temp = 0, moisture = 0, light = 0
         
+        // Fetch Sensor Data
         for (let i = 0; i < sensors.length; i++) {
           try {
             const dataRes = await api.get(`/api/sensor/data/${sensors[i].id}`)
-            const sensorValList = dataRes.data 
-            
-            if (sensorValList && sensorValList.length > 0) {
-              sensors[i].historyData = sensorValList; 
-              const latestVal = sensorValList[sensorValList.length - 1].value; 
-              
+            if (dataRes.data && dataRes.data.length > 0) {
+              sensors[i].historyData = dataRes.data; 
+              const latestVal = dataRes.data[dataRes.data.length - 1].value; 
               if (sensors[i].type === "Temperature") temp = latestVal
               if (sensors[i].type === "Moisture") moisture = latestVal
               if (sensors[i].type === "Light") light = latestVal
             }
-          } catch (e) {
-            sensors[i].status = "Offline"
-          }
+          } catch (e) { sensors[i].status = "Offline" }
         }
+
+        // Fetch Pump Log (Water Volume Data)
+        const waterVirtualSensor: any = {
+          id: "water_volume_id", type: "waterVolume", macId: "Pump Log", connectId: pumpId, status: "Online", historyData: []
+        };
+        try {
+          const logRes = await api.get(`/api/pumpLog/pump/${pumpId}`);
+          if (logRes.data) waterVirtualSensor.historyData = logRes.data;
+        } catch (e) {
+          try {
+             // Fallback endpoint
+             const logRes2 = await api.get(`/api/pump-log/pump/${pumpId}`);
+             if (logRes2.data) waterVirtualSensor.historyData = logRes2.data;
+          } catch (e2) {}
+        }
+        sensors.push(waterVirtualSensor);
         
         setPumps(prev => prev.map(p => p.id === pumpId ? { ...p, sensors, sensorData: { ...p.sensorData, temp, moisture, light } } : p))
         setSelectedPump(prev => prev?.id === pumpId ? { ...prev, sensors, sensorData: { ...prev.sensorData, temp, moisture, light } } : prev)
-      } catch (error) {
-        console.error("Error loading pump details", error)
-      }
+      } catch (error) {}
     }
 
     if (selectedPump && currentUser) {
@@ -173,10 +159,7 @@ export function SmartGarden() {
       fetchPumpDetails(selectedPump.id)
       fetchUserAlerts(userId)
 
-      const interval = setInterval(() => {
-        fetchPumpDetails(selectedPump.id)
-        fetchUserAlerts(userId)
-      }, 10000)
+      const interval = setInterval(() => { fetchPumpDetails(selectedPump.id); fetchUserAlerts(userId) }, 15000)
       return () => clearInterval(interval)
     }
   }, [selectedPump?.id, currentUser])
@@ -185,102 +168,52 @@ export function SmartGarden() {
     if (!selectedPump || !currentUser) return
     try {
       await api.put('/api/pump', {
-        id: selectedPump.id,
-        name: selectedPump.name,
-        connectionId: selectedPump.connectionId,
-        userId: currentUser.id || currentUser.userId,
-        temperatureMax: newThresholds.maxTemp,
-        temperatureMin: newThresholds.minTemp,
-        lightIntensityMax: newThresholds.maxLight,
-        moistureThreshold: newThresholds.moistureThreshold,
+        id: selectedPump.id, name: selectedPump.name, connectionId: selectedPump.connectionId, userId: currentUser.id || currentUser.userId,
+        temperatureMax: newThresholds.maxTemp, temperatureMin: newThresholds.minTemp, lightIntensityMax: newThresholds.maxLight, moistureThreshold: newThresholds.moistureThreshold,
         fieldCapacity: 1, rootDepth: 1, area: 1 
       });
-      
       const updatedPump = { ...selectedPump, thresholds: newThresholds }
       setPumps(prev => prev.map(p => p.id === selectedPump.id ? updatedPump : p))
       setSelectedPump(updatedPump)
       showToast("Configuration updated successfully!")
-    } catch (error) {
-      showToast("Failed to save configuration", "error")
-    }
+    } catch (error) { showToast("Failed to save configuration", "error") }
   }
 
   const handleModeSwitch = () => { if (mode === "AUTO") setShowModeConfirm(true); else switchMode("AUTO") }
-  
-  const switchMode = async (newMode: "AUTO" | "MANUAL") => {
-    try {
-      // Backend ko có /api/pump/mode, ta dùng PUT /api/pump cập nhật toàn bộ (kèm trạng thái nếu Entity Pump hỗ trợ, hoặc bỏ qua nếu logic xử lý local)
-      if (selectedPump && currentUser) {
-        // Mock payload put if needed, fallback to local state change
-      }
-      setMode(newMode)
-      setShowModeConfirm(false)
-      showToast(`Switched to ${newMode} mode successfully`)
-    } catch (error) {
-      showToast("Failed to switch mode", "error")
-    }
-  }
-
+  const switchMode = async (newMode: "AUTO" | "MANUAL") => { setMode(newMode); setShowModeConfirm(false); showToast(`Switched to ${newMode} mode successfully`) }
   const handlePowerToggle = (newState: boolean) => { setPendingPowerState(newState); setShowPowerConfirm(true) }
   
   const confirmPowerToggle = async () => {
     if (!selectedPump) return;
     try {
-      // Controller mapping: POST /api/pump/manual
       await api.post(`/api/pump/manual?pumpId=${selectedPump.id}&onCommand=${pendingPowerState}`)
-      setIsPumpOn(pendingPowerState);
-      setShowPowerConfirm(false);
-      showToast(`Pump has been turned ${pendingPowerState ? "ON" : "OFF"}`);
-    } catch (error) {
-      setShowPowerConfirm(false);
-      showToast("Failed to send command!", "error");
-    }
+      setIsPumpOn(pendingPowerState); setShowPowerConfirm(false); showToast(`Pump has been turned ${pendingPowerState ? "ON" : "OFF"}`);
+    } catch (error) { setShowPowerConfirm(false); showToast("Failed to send command!", "error"); }
   }
-  const handleSensorClick = (sensor: SensorType) => { setAnalyticsSensor(sensor); setActiveTab("analytics") }
 
   const handleAddPump = async () => {
     if (!newPumpName.trim() || !newPumpMac.trim()) return
     setIsAddingPump(true); setAddError(null)
-    
     try {
-      // Controller mapping: POST /api/pump
       await api.post('/api/pump', {
-        name: newPumpName.trim(),
-        connectionId: parseInt(newPumpMac) || 0,
-        userId: currentUser.id || currentUser.userId,
-        temperatureMax: 35, temperatureMin: 15, lightIntensityMax: 90, moistureThreshold: 40,
-        fieldCapacity: 1, rootDepth: 1, area: 1 
+        name: newPumpName.trim(), connectionId: parseInt(newPumpMac) || 0, userId: currentUser.id || currentUser.userId,
+        temperatureMax: 35, temperatureMin: 15, lightIntensityMax: 90, moistureThreshold: 40, fieldCapacity: 1, rootDepth: 1, area: 1 
       })
-      
       fetchUserPumps(currentUser.id || currentUser.userId);
-      setShowAddPump(false); setNewPumpName(""); setNewPumpMac("");
-      showToast("Pump added successfully!")
-    } catch (error: any) {
-      setAddError("Backend connection error. Please try again.")
-    } finally {
-      setIsAddingPump(false)
-    }
+      setShowAddPump(false); setNewPumpName(""); setNewPumpMac(""); showToast("Pump added successfully!")
+    } catch (error: any) { setAddError("Backend connection error. Please try again.") } 
+    finally { setIsAddingPump(false) }
   }
 
   const handleDeletePump = async () => {
     if (!selectedPump) return;
     try {
       await api.delete(`/api/pump/${selectedPump.id}`);
-      
       const remainingPumps = pumps.filter(p => p.id !== selectedPump.id);
       setPumps(remainingPumps);
-      
-      if (remainingPumps.length > 0) {
-        setSelectedPump(remainingPumps[0]);
-      } else {
-        setSelectedPump(null);
-      }
-      
-      showToast("Pump deleted successfully");
-      setActiveTab("home"); 
-    } catch (error) {
-      showToast("Failed to delete pump", "error");
-    }
+      if (remainingPumps.length > 0) setSelectedPump(remainingPumps[0]); else setSelectedPump(null);
+      showToast("Pump deleted successfully"); setActiveTab("home"); 
+    } catch (error) { showToast("Failed to delete pump", "error"); }
   }
 
   const handleAddSensor = async () => {
@@ -289,66 +222,34 @@ export function SmartGarden() {
     if (!sensorTypeToAdd) return
 
     try {
-      // Controller mapping: POST /api/device
       await api.post('/api/device', {
-        name: `${sensorTypeToAdd} Sensor`,
-        type: sensorTypeToAdd.toUpperCase(),
-        connectId: parseInt(newSensorMac) || 0,
-        pumpId: selectedPump.id
+        name: `${sensorTypeToAdd} Sensor`, type: sensorTypeToAdd.toUpperCase(), connectId: parseInt(newSensorMac) || 0, pumpId: selectedPump.id
       })
-      
-      showToast("Sensor added successfully!")
-      setShowAddSensor(false); setNewSensorMac(""); setNewSensorType("Temperature")
-      setSelectedPump({...selectedPump})
-    } catch (error) {
-      showToast("Failed to add sensor", "error")
-    }
+      showToast("Sensor added successfully!"); setShowAddSensor(false); setNewSensorMac(""); setNewSensorType("Temperature"); setSelectedPump({...selectedPump})
+    } catch (error) { showToast("Failed to add sensor", "error") }
   }
 
   const handleDeleteSensor = async (sensor: Sensor) => {
     if (!selectedPump) return
     try {
-      await api.delete(`/api/device/${sensor.id}`)
-      showToast("Sensor deleted successfully")
-      setSelectedPump({...selectedPump}) 
-    } catch (error) {
-      showToast("Failed to delete sensor", "error")
-    }
+      await api.delete(`/api/device/${sensor.id}`); showToast("Sensor deleted successfully"); setSelectedPump({...selectedPump}) 
+    } catch (error) { showToast("Failed to delete sensor", "error") }
   }
 
   const handleEditProfileClick = () => {
-    setProfileForm({
-      fullName: currentUser?.fullName || "",
-      username: currentUser?.username || currentUser?.userName || "",
-      email: currentUser?.email || ""
-    });
+    setProfileForm({ fullName: currentUser?.fullName || "", username: currentUser?.username || currentUser?.userName || "", email: currentUser?.email || "" });
     setIsEditingProfile(true);
   }
 
   const handleSaveProfile = async () => {
-    if (!profileForm.fullName.trim() || !profileForm.username.trim() || !profileForm.email.trim()) {
-      showToast("All fields are required", "error");
-      return;
-    }
-    
+    if (!profileForm.fullName.trim() || !profileForm.username.trim() || !profileForm.email.trim()) { showToast("All fields are required", "error"); return; }
     setIsSavingProfile(true);
     try {
       const userId = currentUser.id || currentUser.userId;
-      // DTO UpdateUserRequest yêu cầu trường userName theo mapping BE
-      const response = await api.put(`/api/user/${userId}`, {
-        fullName: profileForm.fullName.trim(),
-        userName: profileForm.username.trim(), 
-        email: profileForm.email.trim()
-      });
-      
-      setCurrentUser(response.data);
-      setIsEditingProfile(false);
-      showToast("Profile updated successfully!");
-    } catch (error) {
-      showToast("Failed to update profile", "error");
-    } finally {
-      setIsSavingProfile(false);
-    }
+      const response = await api.put(`/api/user/${userId}`, { fullName: profileForm.fullName.trim(), userName: profileForm.username.trim(), email: profileForm.email.trim() });
+      setCurrentUser(response.data); setIsEditingProfile(false); showToast("Profile updated successfully!");
+    } catch (error) { showToast("Failed to update profile", "error"); } 
+    finally { setIsSavingProfile(false); }
   }
 
   const getAvailableSensorTypes = () => {
@@ -366,21 +267,12 @@ export function SmartGarden() {
       <div className="max-w-md mx-auto min-h-screen relative bg-background flex flex-col">
         {authState === "welcome" && <WelcomeScreen onLogin={() => setAuthState("login")} onRegister={() => setAuthState("register")} />}
         {authState === "login" && <LoginScreen form={loginForm} setForm={setLoginForm} onBack={() => setAuthState("welcome")} onLoginSuccess={async (userData: any) => { 
-          // AuthResponse BE thường bọc token, id. Tùy thuộc data BE mà extract (thường userData.userId hoặc decode JWT)
           const validUserId = userData.userId || userData.id; 
           if (validUserId) { 
-            try {
-              const userRes = await api.get(`/api/user/${validUserId}`);
-              setCurrentUser(userRes.data);
-            } catch (e) {
-              setCurrentUser({ id: validUserId, fullName: "User", userName: "user" }); 
-            }
-            setAuthState("authenticated"); 
-            fetchUserPumps(validUserId); 
-          } else {
-             // Fallback bypass test nếu Auth ko trả ID
-             setAuthState("authenticated");
-          }
+            try { const userRes = await api.get(`/api/user/${validUserId}`); setCurrentUser(userRes.data); } 
+            catch (e) { setCurrentUser({ id: validUserId, fullName: "User", userName: "user" }); }
+            setAuthState("authenticated"); fetchUserPumps(validUserId); 
+          } else { setAuthState("authenticated"); }
         }} onSwitchToRegister={() => setAuthState("register")} />}
         {authState === "register" && <RegisterScreen form={registerForm} setForm={setRegisterForm} onBack={() => setAuthState("welcome")} onRegisterSuccess={() => { setAuthState("login"); showToast("Registration successful! Please login.") }} onSwitchToLogin={() => setAuthState("login")} />}
         
@@ -432,11 +324,10 @@ export function SmartGarden() {
       {/* TABS VIEW */}
       <main className="flex-1 overflow-y-auto px-5 pb-24">
         {activeTab === "home" && (hasPumps && selectedPump ? <DashboardTab sensorData={sensorData} mode={mode} onModeSwitch={() => {if(mode==="AUTO") setShowModeConfirm(true); else switchMode("AUTO")}} isPumpOn={isPumpOn} onPowerToggle={(s) => {setPendingPowerState(s); setShowPowerConfirm(true)}} onSensorClick={(s) => {setAnalyticsSensor(s); setActiveTab("analytics")}} thresholds={currentThresholds} sensors={selectedPump.sensors} onAddSensor={() => setShowAddSensor(true)} onDeleteSensor={handleDeleteSensor} allSensorsConnected={allSensorsConnected} /> : <EmptyState onAddPump={() => setShowAddPump(true)} />)}   
-        {}
         {activeTab === "analytics" && (hasPumps ? <AnalyticsTab sensors={selectedPump?.sensors || []} selectedSensor={analyticsSensor} setSelectedSensor={setAnalyticsSensor} thresholds={currentThresholds} /> : <EmptyStateAnalytics />)}    
-        {}
         {activeTab === "settings" && (hasPumps ? <SettingsTab thresholds={currentThresholds} onSaveThresholds={handleUpdateThresholds} onAddPump={() => setShowAddPump(true)} onDeletePump={handleDeletePump} /> : <EmptyStateSettings onAddPump={() => setShowAddPump(true)} />)}
       </main>
+      
       {/* NAVIGATION BAR */}
       <nav className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-foreground px-6 py-3 rounded-full shadow-lg z-40">
         {[{ id: "home" as const, icon: Home, label: "Home" }, { id: "analytics" as const, icon: BarChart3, label: "Stats" }, { id: "settings" as const, icon: Settings, label: "Config" }].map((tab) => (
@@ -483,7 +374,6 @@ export function SmartGarden() {
         </DialogContent>
       </Dialog>
 
-      {/* USER PROFILE MODAL - Gắn onClick={handleLogout} tại đây */}
       <Dialog open={showProfile} onOpenChange={setShowProfile}>
         <DialogContent className="max-w-md mx-4 rounded-3xl">
           <DialogHeader><DialogTitle className="flex items-center gap-2"><User className="w-5 h-5 text-primary" />Profile</DialogTitle></DialogHeader>
