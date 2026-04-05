@@ -11,7 +11,7 @@ const API_BASE_URL = "https://mac4tpet6z.ap-southeast-1.awsapprunner.com"
 export function WelcomeScreen({ onLogin, onRegister }: any) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-8">
-      {/* Giữ nguyên icon Sprout ở đây */}
+      {}
       <div className="w-24 h-24 rounded-3xl bg-primary/10 flex items-center justify-center mb-8">
         <Sprout className="w-12 h-12 text-primary" />
       </div>
