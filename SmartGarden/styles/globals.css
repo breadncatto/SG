@@ -29,22 +29,21 @@
   }
 
   .dark {
-    /* Tối ưu hoá Dark Mode cho Smart Garden - Độ tương phản cao */
-    --background: 151 47% 7%;      /* Nền tối hơn để nổi bật nội dung */
-    --foreground: 120 20% 95%;     /* Trắng ngà, ám chút xanh nhẹ, rất dễ đọc */
-    --card: 151 30% 12%;           /* Sáng hơn nền một chút để tạo chiều sâu */
+    --background: 151 47% 7%;     
+    --foreground: 120 20% 95%;    
+    --card: 151 30% 12%;          
     --card-foreground: 120 20% 95%;
     --popover: 151 30% 12%;
     --popover-foreground: 120 20% 95%;
     
-    --primary: 142 70% 45%;        /* Xanh lá cây tươi, nổi bật cho các số liệu quan trọng */
+    --primary: 142 70% 45%;        
     --primary-foreground: 151 50% 5%;
     
     --secondary: 130 15% 25%;
     --secondary-foreground: 120 20% 95%;
     
-    --muted: 151 20% 18%;          /* Nền cho các nút/tab chưa active */
-    --muted-foreground: 130 15% 70%; /* Xám xanh sáng, đủ tương phản để đọc text phụ */
+    --muted: 151 20% 18%;          
+    --muted-foreground: 130 15% 70%; 
     
     --accent: 126 14% 25%;
     --accent-foreground: 120 20% 95%;
@@ -52,7 +51,7 @@
     --destructive: 0 62.8% 40.6%;
     --destructive-foreground: 0 85.7% 97.3%;
     
-    --border: 151 20% 22%;         /* Viền mỏng, không quá gắt */
+    --border: 151 20% 22%;         
     --input: 151 20% 22%;
     --ring: 142 70% 45%;
   }
