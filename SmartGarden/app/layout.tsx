@@ -7,6 +7,10 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "Smart Garden",
   description: "IoT Pump Management System for smart agriculture and gardening",
+  icons: {
+    icon: '/logo.png', // Logo hiển thị trên tab trình duyệt
+    apple: '/logo.png', // Logo hiển thị trên màn hình chính iPhone/iPad khi thêm PWA
+  },
 };
 
 export default function RootLayout({
