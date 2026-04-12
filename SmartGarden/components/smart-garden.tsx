@@ -25,6 +25,7 @@ export function SmartGarden() {
   const [selectedPump, setSelectedPump] = useState<Pump | null>(null)
   
   const [alertsList, setAlertsList] = useState<any[]>([])
+  const [pumpLogs, setPumpLogs] = useState<any[]>([]) // Thêm state lưu logs
   
   const [isLoadingPumps, setIsLoadingPumps] = useState(false)
   const [activeTab, setActiveTab] = useState<"home" | "analytics" | "settings">("home")
@@ -141,17 +142,24 @@ export function SmartGarden() {
           } catch (e) { sensors[i].status = "Offline" }
         }
 
-        // Fetch Pump Log 
+        // Fetch Pump Log (Duy trì API lấy log từ Database)
         const waterVirtualSensor: any = {
           id: "water_volume_id", type: "waterVolume", macId: "Pump Log", connectId: pumpId, status: "Online", historyData: []
         };
         try {
           const logRes = await api.get(`/api/pumpLog/pump/${pumpId}`);
-          if (logRes.data) waterVirtualSensor.historyData = logRes.data;
+          if (logRes.data) {
+             waterVirtualSensor.historyData = logRes.data;
+             // Chỉ set log từ API nếu danh sách rỗng, tránh ghi đè log local vừa tạo
+             setPumpLogs(prev => prev.length > 0 ? prev : logRes.data); 
+          }
         } catch (e) {
           try {
              const logRes2 = await api.get(`/api/pump-log/pump/${pumpId}`);
-             if (logRes2.data) waterVirtualSensor.historyData = logRes2.data;
+             if (logRes2.data) {
+                waterVirtualSensor.historyData = logRes2.data;
+                setPumpLogs(prev => prev.length > 0 ? prev : logRes2.data);
+             }
           } catch (e2) {}
         }
         sensors.push(waterVirtualSensor);
@@ -186,16 +194,55 @@ export function SmartGarden() {
     } catch (error) { showToast("Failed to save configuration", "error") }
   }
 
+  // --- CẬP NHẬT LOG KHI ĐỔI MODE ---
   const handleModeSwitch = () => { if (mode === "AUTO") setShowModeConfirm(true); else switchMode("AUTO") }
-  const switchMode = async (newMode: "AUTO" | "MANUAL") => { setMode(newMode); setShowModeConfirm(false); showToast(`Switched to ${newMode} mode successfully`) }
+  const switchMode = async (newMode: "AUTO" | "MANUAL") => { 
+    setMode(newMode); 
+    setShowModeConfirm(false); 
+    showToast(`Switched to ${newMode} mode successfully`);
+
+    // Ghi log chuyển mode
+    const newLog = {
+      action: 'MODE_SWITCH',
+      mode: newMode,
+      status: 'Success',
+      timestamp: new Date().toISOString()
+    };
+    setPumpLogs(prev => [...prev, newLog]);
+  }
+
+  // --- CẬP NHẬT LOG KHI BẬT TẮT BƠM ---
   const handlePowerToggle = (newState: boolean) => { setPendingPowerState(newState); setShowPowerConfirm(true) }
-  
   const confirmPowerToggle = async () => {
     if (!selectedPump) return;
     try {
       await api.post(`/api/pump/manual?pumpId=${selectedPump.id}&onCommand=${pendingPowerState}`)
-      setIsPumpOn(pendingPowerState); setShowPowerConfirm(false); showToast(`Pump has been turned ${pendingPowerState ? "ON" : "OFF"}`);
-    } catch (error) { setShowPowerConfirm(false); showToast("Failed to send command!", "error"); }
+      setIsPumpOn(pendingPowerState); 
+      setShowPowerConfirm(false); 
+      showToast(`Pump has been turned ${pendingPowerState ? "ON" : "OFF"}`);
+
+      // Ghi log bật/tắt thành công
+      const newLog = {
+        action: pendingPowerState ? 'ON' : 'OFF',
+        mode: 'MANUAL',
+        status: 'Success',
+        timestamp: new Date().toISOString()
+      };
+      setPumpLogs(prev => [...prev, newLog]);
+
+    } catch (error) { 
+      setShowPowerConfirm(false); 
+      showToast("Failed to send command!", "error"); 
+
+      // Ghi log bật/tắt thất bại
+      const errorLog = {
+        action: pendingPowerState ? 'ON' : 'OFF',
+        mode: 'MANUAL',
+        status: 'Failed',
+        timestamp: new Date().toISOString()
+      };
+      setPumpLogs(prev => [...prev, errorLog]);
+    }
   }
 
   const handleAddPump = async () => {
@@ -330,7 +377,7 @@ export function SmartGarden() {
 
       {/* view */}
       <main className="flex-1 overflow-y-auto px-5 pb-24">
-        {activeTab === "home" && (hasPumps && selectedPump ? <DashboardTab sensorData={sensorData} mode={mode} onModeSwitch={() => {if(mode==="AUTO") setShowModeConfirm(true); else switchMode("AUTO")}} isPumpOn={isPumpOn} onPowerToggle={(s) => {setPendingPowerState(s); setShowPowerConfirm(true)}} onSensorClick={(s) => {setAnalyticsSensor(s); setActiveTab("analytics")}} thresholds={currentThresholds} sensors={selectedPump.sensors} onAddSensor={() => setShowAddSensor(true)} onDeleteSensor={handleDeleteSensor} allSensorsConnected={allSensorsConnected} /> : <EmptyState onAddPump={() => setShowAddPump(true)} />)}   
+        {activeTab === "home" && (hasPumps && selectedPump ? <DashboardTab sensorData={sensorData} mode={mode} onModeSwitch={() => {if(mode==="AUTO") setShowModeConfirm(true); else switchMode("AUTO")}} isPumpOn={isPumpOn} onPowerToggle={(s) => {setPendingPowerState(s); setShowPowerConfirm(true)}} onSensorClick={(s) => {setAnalyticsSensor(s); setActiveTab("analytics")}} thresholds={currentThresholds} sensors={selectedPump.sensors} onAddSensor={() => setShowAddSensor(true)} onDeleteSensor={handleDeleteSensor} allSensorsConnected={allSensorsConnected} pumpLogs={pumpLogs} /> : <EmptyState onAddPump={() => setShowAddPump(true)} />)}   
         {activeTab === "analytics" && (hasPumps ? <AnalyticsTab sensors={selectedPump?.sensors || []} selectedSensor={analyticsSensor} setSelectedSensor={setAnalyticsSensor} thresholds={currentThresholds} /> : <EmptyStateAnalytics />)}    
         {activeTab === "settings" && (hasPumps ? <SettingsTab thresholds={currentThresholds} onSaveThresholds={handleUpdateThresholds} onAddPump={() => setShowAddPump(true)} onDeletePump={handleDeletePump} /> : <EmptyStateSettings onAddPump={() => setShowAddPump(true)} />)}
       </main>

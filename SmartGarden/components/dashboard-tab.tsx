@@ -1,13 +1,13 @@
 "use client"
 
 import React from "react"
-import { Wifi, Thermometer, Sun, Droplets, Beaker, Power, Plus, Loader2, Trash2, AlertTriangle, ArrowUpRight, Sprout } from "lucide-react"
+import { Wifi, Thermometer, Sun, Droplets, Beaker, Power, Plus, Loader2, Trash2, AlertTriangle, ArrowUpRight, Sprout, History } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { SensorType, Sensor } from "@/types/smart-garden"
 
-export function DashboardTab({ sensorData, mode, onModeSwitch, isPumpOn, onPowerToggle, onSensorClick, thresholds, sensors, onAddSensor, onDeleteSensor, allSensorsConnected }: any) {
+export function DashboardTab({ sensorData, mode, onModeSwitch, isPumpOn, onPowerToggle, onSensorClick, thresholds, sensors, onAddSensor, onDeleteSensor, allSensorsConnected, pumpLogs }: any) {
   const hasTemp = sensors.some((s: Sensor) => s.type === "Temperature")
   const hasMoisture = sensors.some((s: Sensor) => s.type === "Moisture")
   const hasLight = sensors.some((s: Sensor) => s.type === "Light")
@@ -60,6 +60,52 @@ export function DashboardTab({ sensorData, mode, onModeSwitch, isPumpOn, onPower
             </div>
           </div>
           <Switch checked={isPumpOn} onCheckedChange={(checked) => { if (mode === "MANUAL") onPowerToggle(checked) }} disabled={mode === "AUTO"} className="data-[state=checked]:bg-primary scale-125" />
+        </div>
+      </section>
+
+      {/* Pump Activity Log Section (Đã được chuyển lên ngay sau Pump Control) */}
+      <section className="bg-card rounded-3xl p-5 shadow-sm border border-border">
+        <h2 className="font-semibold text-foreground mb-4 text-sm tracking-wide flex items-center gap-2">
+          <History className="w-4 h-4 text-primary" /> Pump Activity Log
+        </h2>
+        <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
+          {pumpLogs && pumpLogs.length > 0 ? (
+            [...pumpLogs].reverse().map((log: any, index: number) => {
+              const isActionOn = log.action === 'ON' || log.isTurnOn || log.status === 'ON';
+              const logMode = log.mode || (log.isAuto ? 'AUTO' : 'MANUAL') || 'MANUAL';
+              const isSuccess = log.success !== false && log.status !== 'Failed';
+              const timeString = log.timestamp || log.createdAt || log.created_at;
+
+              return (
+                <div key={index} className="flex flex-col p-3 bg-muted/50 rounded-2xl border border-border/50 text-xs transition-colors hover:bg-muted">
+                  <div className="flex justify-between items-center mb-1.5">
+                    <span className="font-semibold flex items-center gap-1.5">
+                      <span className={cn("w-2 h-2 rounded-full", isActionOn ? "bg-primary" : "bg-muted-foreground")} />
+                      {isActionOn ? 'Pump Turned ON' : 'Pump Turned OFF'}
+                    </span>
+                    <span className="text-muted-foreground font-medium">
+                      {timeString ? new Date(timeString).toLocaleString('vi-VN') : 'Unknown time'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">
+                      Mode: <span className="font-medium text-foreground">{logMode}</span>
+                    </span>
+                    <span className={cn("font-medium px-2 py-0.5 rounded-full", 
+                      isSuccess ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"
+                    )}>
+                      {isSuccess ? 'Success' : 'Failed'}
+                    </span>
+                  </div>
+                </div>
+              )
+            })
+          ) : (
+            <div className="flex flex-col items-center justify-center py-6 text-center">
+              <History className="w-8 h-8 text-muted-foreground/30 mb-2" />
+              <p className="text-xs text-muted-foreground">No recent pump activities recorded.</p>
+            </div>
+          )}
         </div>
       </section>
 
