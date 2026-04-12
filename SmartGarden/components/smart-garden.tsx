@@ -16,7 +16,7 @@ import { DashboardTab, EmptyState } from "./dashboard-tab"
 import { AnalyticsTab, EmptyStateAnalytics } from "./analytics-tab"
 import { SettingsTab, EmptyStateSettings } from "./settings-tab"
 
-const DEFAULT_THRESHOLDS = { minTemp: 15, maxTemp: 35, moistureThreshold: 40, maxLight: 90 }
+const DEFAULT_THRESHOLDS = { minTemp: 15, maxTemp: 35, moistureThreshold: 40, maxLight: 90, area: 1, fieldCapacity: 1, rootDepth: 1 }
 
 export function SmartGarden() {
   const [authState, setAuthState] = useState<AuthState>("welcome")
@@ -81,7 +81,15 @@ export function SmartGarden() {
         userId: p.userId,
         sensors: [],
         sensorData: { temp: 0, moisture: 0, light: 0, waterVolume: 0 },
-        thresholds: { minTemp: p.temperatureMin || 15, maxTemp: p.temperatureMax || 35, moistureThreshold: p.moistureThreshold || 40, maxLight: p.lightIntensityMax || 90 }
+        thresholds: { 
+          minTemp: p.temperatureMin || 15, 
+          maxTemp: p.temperatureMax || 35, 
+          moistureThreshold: p.moistureThreshold || 40, 
+          maxLight: p.lightIntensityMax || 90,
+          area: p.area || 1,
+          fieldCapacity: p.fieldCapacity || 1,
+          rootDepth: p.rootDepth || 1
+        }
       }))
       setPumps(formattedPumps)
       if (formattedPumps.length > 0) setSelectedPump(formattedPumps[0])
@@ -169,7 +177,7 @@ export function SmartGarden() {
       await api.put('/api/pump', {
         id: selectedPump.id, name: selectedPump.name, connectionId: selectedPump.connectionId, userId: currentUser.id || currentUser.userId,
         temperatureMax: newThresholds.maxTemp, temperatureMin: newThresholds.minTemp, lightIntensityMax: newThresholds.maxLight, moistureThreshold: newThresholds.moistureThreshold,
-        fieldCapacity: 1, rootDepth: 1, area: 1 
+        fieldCapacity: newThresholds.fieldCapacity, rootDepth: newThresholds.rootDepth, area: newThresholds.area 
       });
       const updatedPump = { ...selectedPump, thresholds: newThresholds }
       setPumps(prev => prev.map(p => p.id === selectedPump.id ? updatedPump : p))

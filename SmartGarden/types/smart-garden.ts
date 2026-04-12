@@ -29,5 +29,8 @@ export interface Pump {
     maxTemp: number
     moistureThreshold: number
     maxLight: number
+    area: number          
+    fieldCapacity: number    
+    rootDepth: number       
   }
 }

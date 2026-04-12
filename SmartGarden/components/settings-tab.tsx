@@ -45,6 +45,38 @@ export function SettingsTab({ thresholds, onSaveThresholds, onAddPump, onDeleteP
             <label className="text-xs text-muted-foreground mb-2 block">Max Light (%)</label>
             <Input type="number" value={localThresholds.maxLight} onChange={(e) => setLocalThresholds({ ...localThresholds, maxLight: +e.target.value })} className="rounded-xl bg-background border-border text-foreground focus-visible:ring-ring" />
           </div>
+          
+          {/* Các trường mới thêm vào */}
+          <div>
+            <label className="text-xs text-muted-foreground mb-2 block">Area (m²)</label>
+            <Input 
+              type="number" 
+              value={localThresholds.area || ''} 
+              onChange={(e) => setLocalThresholds({ ...localThresholds, area: +e.target.value })} 
+              className="rounded-xl bg-background border-border text-foreground focus-visible:ring-ring" 
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-muted-foreground mb-2 block">Field Capacity</label>
+              <Input 
+                type="number" 
+                value={localThresholds.fieldCapacity || ''} 
+                onChange={(e) => setLocalThresholds({ ...localThresholds, fieldCapacity: +e.target.value })} 
+                className="rounded-xl bg-background border-border text-foreground focus-visible:ring-ring" 
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-2 block">Root Depth (m)</label>
+              <Input 
+                type="number" 
+                value={localThresholds.rootDepth || ''} 
+                onChange={(e) => setLocalThresholds({ ...localThresholds, rootDepth: +e.target.value })} 
+                className="rounded-xl bg-background border-border text-foreground focus-visible:ring-ring" 
+              />
+            </div>
+          </div>
+
           <Button onClick={handleSave} className={cn("w-full rounded-xl transition-all font-semibold mt-2", saved ? "bg-[#6B9071] text-[#0F2A1D]" : "bg-primary text-primary-foreground hover:bg-primary/90")}>
             {saved ? <span className="flex items-center gap-2"><Check className="w-4 h-4" /> Saved!</span> : "Save Configuration"}
           </Button>
