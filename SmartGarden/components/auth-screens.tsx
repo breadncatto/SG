@@ -53,7 +53,7 @@ export function LoginScreen({ form, setForm, onBack, onLoginSuccess, onSwitchToR
         const response = await fetch(`${API_BASE_URL}/auth/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username: form.username, password: form.password }) // BE AuthenticationRequest yêu cầu username
+          body: JSON.stringify({ username: form.username, password: form.password }) 
         })
         
         if (response.ok) {
@@ -146,7 +146,7 @@ export function RegisterScreen({ form, setForm, onBack, onRegisterSuccess, onSwi
           body: JSON.stringify({ 
             fullName: form.fullName, 
             email: form.email, 
-            userName: form.username, // BE CreateUserRequest yêu cầu trường userName
+            userName: form.username, 
             password: form.password 
           })
         })
