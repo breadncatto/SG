@@ -45,7 +45,7 @@ export function DashboardTab({ sensorData, mode, onModeSwitch, isPumpOn, onPower
           <span className="text-foreground font-medium">Mode</span>
           <div className="flex bg-muted rounded-full p-1">
             {["AUTO", "MANUAL"].map((m) => (
-              <button key={m} onClick={() => { if (mode !== m) onModeSwitch() }} className={cn("px-4 py-2 rounded-full text-sm font-medium", mode === m ? "bg-card text-foreground shadow-sm" : "text-muted-foreground")}>{m}</button>
+              <button key={m} onClick={() => { if (mode !== m) onModeSwitch(m) }} className={cn("px-4 py-2 rounded-full text-sm font-medium", mode === m ? "bg-card text-foreground shadow-sm" : "text-muted-foreground")}>{m}</button>
             ))}
           </div>
         </div>
@@ -63,39 +63,58 @@ export function DashboardTab({ sensorData, mode, onModeSwitch, isPumpOn, onPower
         </div>
       </section>
 
-      {/* Pump Activity Log Section (Đã được chuyển lên ngay sau Pump Control) */}
+      {/* Pump Log*/}
       <section className="bg-card rounded-3xl p-5 shadow-sm border border-border">
         <h2 className="font-semibold text-foreground mb-4 text-sm tracking-wide flex items-center gap-2">
           <History className="w-4 h-4 text-primary" /> Pump Activity Log
         </h2>
         <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
           {pumpLogs && pumpLogs.length > 0 ? (
-            [...pumpLogs].reverse().map((log: any, index: number) => {
-              const isActionOn = log.action === 'ON' || log.isTurnOn || log.status === 'ON';
+            [...pumpLogs].sort((a, b) => {
+              const timeA = new Date(a.timestamp || a.createdAt || a.created_at || 0).getTime();
+              const timeB = new Date(b.timestamp || b.createdAt || b.created_at || 0).getTime();
+              return timeB - timeA; 
+            }).map((log: any, index: number) => {
+
+              let actionText = log.action;
+              if (actionText === 'ON') actionText = 'Pump turned ON';
+              if (actionText === 'OFF') actionText = 'Pump turned OFF';
+              if (!actionText) actionText = log.isTurnOn ? 'Pump turned ON' : 'Pump turned OFF';
+
               const logMode = log.mode || (log.isAuto ? 'AUTO' : 'MANUAL') || 'MANUAL';
-              const isSuccess = log.success !== false && log.status !== 'Failed';
+              const isPending = log.status === 'Pending';
+              const isSuccess = log.status === 'Success' || (log.success !== false && log.status !== 'Failed' && !isPending);
               const timeString = log.timestamp || log.createdAt || log.created_at;
 
               return (
                 <div key={index} className="flex flex-col p-3 bg-muted/50 rounded-2xl border border-border/50 text-xs transition-colors hover:bg-muted">
                   <div className="flex justify-between items-center mb-1.5">
-                    <span className="font-semibold flex items-center gap-1.5">
-                      <span className={cn("w-2 h-2 rounded-full", isActionOn ? "bg-primary" : "bg-muted-foreground")} />
-                      {isActionOn ? 'Pump Turned ON' : 'Pump Turned OFF'}
+                    <span className="font-semibold flex items-center gap-1.5 text-foreground">
+                      <span className={cn("w-2 h-2 rounded-full", 
+                        actionText.includes('ON') ? "bg-primary" : 
+                        actionText.includes('OFF') ? "bg-muted-foreground" : "bg-blue-500"
+                      )} />
+                      {actionText}
                     </span>
                     <span className="text-muted-foreground font-medium">
-                      {timeString ? new Date(timeString).toLocaleString('vi-VN') : 'Unknown time'}
+                      {timeString ? new Date(timeString).toLocaleString('en-US') : 'Unknown time'}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">
                       Mode: <span className="font-medium text-foreground">{logMode}</span>
                     </span>
-                    <span className={cn("font-medium px-2 py-0.5 rounded-full", 
-                      isSuccess ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"
-                    )}>
-                      {isSuccess ? 'Success' : 'Failed'}
-                    </span>
+                    {isPending ? (
+                      <span className="font-medium px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-600 flex items-center gap-1">
+                        <Loader2 className="w-3 h-3 animate-spin" /> Pending
+                      </span>
+                    ) : (
+                      <span className={cn("font-medium px-2 py-0.5 rounded-full", 
+                        isSuccess ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"
+                      )}>
+                        {isSuccess ? 'Success' : 'Failed'}
+                      </span>
+                    )}
                   </div>
                 </div>
               )
@@ -109,6 +128,7 @@ export function DashboardTab({ sensorData, mode, onModeSwitch, isPumpOn, onPower
         </div>
       </section>
 
+
       <section className="bg-card rounded-3xl p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-medium text-muted-foreground">Device Status</h2>
@@ -119,7 +139,13 @@ export function DashboardTab({ sensorData, mode, onModeSwitch, isPumpOn, onPower
             <p className="text-sm text-muted-foreground text-center py-4">No sensors added yet</p>
           ) : (
             sensors.map((sensor: Sensor) => (
-              <div key={sensor.id} className="flex items-center justify-between py-2">
+              <div 
+                key={sensor.id} 
+                className={cn(
+                  "flex items-center justify-between py-2 transition-all duration-300", 
+                  sensor.connectionStatus === "connecting" && "opacity-50 pointer-events-none grayscale-[30%]"
+                )}
+              >
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
                     {sensor.type === "Temperature" && <Thermometer className="w-4 h-4 text-primary" />}
@@ -130,7 +156,10 @@ export function DashboardTab({ sensorData, mode, onModeSwitch, isPumpOn, onPower
                 </div>
                 <div className="flex items-center gap-3">
                   {sensor.connectionStatus === "connecting" ? (
-                    <div className="flex items-center gap-2"><Loader2 className="w-4 h-4 text-primary animate-spin" /><span className="text-sm font-medium text-primary">Connecting...</span></div>
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 text-primary animate-spin" />
+                      <span className="text-sm font-medium text-primary">Pending...</span>
+                    </div>
                   ) : sensor.connectionStatus === "failed" ? (
                     <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-destructive" /><span className="text-sm font-medium text-destructive">Failed</span></div>
                   ) : (
