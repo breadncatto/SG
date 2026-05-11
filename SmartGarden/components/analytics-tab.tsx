@@ -113,7 +113,6 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
   
   const chartData = useMemo(() => {
     const apiData = actualSensor?.historyData || [];
-
     const aggregate = (dataList: any[]) => {
       if (!dataList || dataList.length === 0) return 0;
       const sum = dataList.reduce((acc, curr) => acc + (isWater ? (curr.waterVolume || curr.water_volume || curr.value || 0) : (curr.value || 0)), 0);
@@ -123,7 +122,6 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
     if (timeView === "Day") {
       const dayStr = activeDate.toLocaleDateString();
       const dayData = apiData.filter((d:any) => new Date(d.createdAt || d.created_at).toLocaleDateString() === dayStr);
-      
       return ["0-4", "4-8", "8-12", "12-16", "16-20", "20-24"].map((time, i) => {
         const startHour = i * 4; const endHour = startHour + 3;
         const slotData = dayData.filter((d:any) => {
@@ -137,25 +135,16 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
     if (timeView === "Week") {
       const startOfWeek = new Date(activeDate); startOfWeek.setDate(activeDate.getDate() - (activeDate.getDay() === 0 ? 6 : activeDate.getDay() - 1)); startOfWeek.setHours(0,0,0,0);
       const endOfWeek = new Date(startOfWeek); endOfWeek.setDate(startOfWeek.getDate() + 6); endOfWeek.setHours(23,59,59,999);
-      const weekData = apiData.filter((d:any) => {
-        const date = new Date(d.createdAt || d.created_at); return date >= startOfWeek && date <= endOfWeek;
-      });
-
+      const weekData = apiData.filter((d:any) => { const date = new Date(d.createdAt || d.created_at); return date >= startOfWeek && date <= endOfWeek; });
       return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, i) => {
-        const slotData = weekData.filter((d:any) => {
-          const targetDay = i === 6 ? 0 : i + 1; // 0 is Sun
-          return new Date(d.createdAt || d.created_at).getDay() === targetDay;
-        });
+        const slotData = weekData.filter((d:any) => { const targetDay = i === 6 ? 0 : i + 1; return new Date(d.createdAt || d.created_at).getDay() === targetDay; });
         return { day, value: Number(aggregate(slotData).toFixed(1)) };
       });
     }
 
     if (timeView === "Month") {
       const month = activeDate.getMonth(); const year = activeDate.getFullYear();
-      const monthData = apiData.filter((d:any) => {
-        const date = new Date(d.createdAt || d.created_at);
-        return date.getMonth() === month && date.getFullYear() === year;
-      });
+      const monthData = apiData.filter((d:any) => { const date = new Date(d.createdAt || d.created_at); return date.getMonth() === month && date.getFullYear() === year; });
       const daysInMonth = new Date(year, month + 1, 0).getDate();
       return Array.from({ length: daysInMonth }, (_, i) => {
         const day = i + 1;
@@ -166,74 +155,123 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
     return []
   }, [timeView, activeDate, selectedSensor, actualSensor, isWater]);
 
+  // Metrics calculation
   const metrics = useMemo(() => {
-    if (!chartData || chartData.length === 0) return null;
-    const values = chartData.map((d: any) => d.value);
-    const sum = values.reduce((a: number, b: number) => a + b, 0);
+    let optimalStr = ""; let minBound = 0, maxBound = 100;
+    if (selectedSensor === "temp") { optimalStr = `${thresholds?.minTemp || 15}-${thresholds?.maxTemp || 35}°C`; minBound = thresholds?.minTemp || 15; maxBound = thresholds?.maxTemp || 35; }
+    if (selectedSensor === "moisture") { optimalStr = `>${thresholds?.moistureThreshold || 40}%`; minBound = thresholds?.moistureThreshold || 40; maxBound = 100; }
+    if (selectedSensor === "light") { optimalStr = `<${thresholds?.maxLight || 90}k lux`; minBound = 0; maxBound = thresholds?.maxLight || 90; }
+
+    const defaultMetrics = {
+      sum: 0, avg: 0, max: 0, min: 0, trendValue: 0, optimal: optimalStr, pumpCycles: 0, optimalPercentage: 100, outOfBoundHours: "0", dropRate: "0.00", estTime: "0.0"
+    };
+
+    const apiData = actualSensor?.historyData || [];
+    
+    // Nếu chưa từng có dữ liệu cho sensor này, trả về mặc định
+    if (!apiData || apiData.length === 0) return defaultMetrics;
+
+    let currentRawData: any[] = [];
+    let previousRawData: any[] = [];
+    let totalHours = 24;
+
+    const tDate = new Date(activeDate);
+    
+    if (timeView === "Day") {
+      const dayStr = tDate.toLocaleDateString();
+      currentRawData = apiData.filter((d:any) => new Date(d.createdAt || d.created_at).toLocaleDateString() === dayStr);
+      
+      const prevDay = new Date(tDate); prevDay.setDate(prevDay.getDate() - 1);
+      const prevStr = prevDay.toLocaleDateString();
+      previousRawData = apiData.filter((d:any) => new Date(d.createdAt || d.created_at).toLocaleDateString() === prevStr);
+      totalHours = 24;
+    } else if (timeView === "Week") {
+      const startOfWeek = new Date(tDate); startOfWeek.setDate(tDate.getDate() - (tDate.getDay() === 0 ? 6 : tDate.getDay() - 1)); startOfWeek.setHours(0,0,0,0);
+      const endOfWeek = new Date(startOfWeek); endOfWeek.setDate(startOfWeek.getDate() + 6); endOfWeek.setHours(23,59,59,999);
+      currentRawData = apiData.filter((d:any) => { const date = new Date(d.createdAt || d.created_at); return date >= startOfWeek && date <= endOfWeek; });
+
+      const prevWeekStart = new Date(startOfWeek); prevWeekStart.setDate(prevWeekStart.getDate() - 7);
+      const prevWeekEnd = new Date(prevWeekStart); prevWeekEnd.setDate(prevWeekStart.getDate() + 6); prevWeekEnd.setHours(23,59,59,999);
+      previousRawData = apiData.filter((d:any) => { const date = new Date(d.createdAt || d.created_at); return date >= prevWeekStart && date <= prevWeekEnd; });
+      totalHours = 168;
+    } else if (timeView === "Month") {
+      const month = tDate.getMonth(); const year = tDate.getFullYear();
+      currentRawData = apiData.filter((d:any) => { const date = new Date(d.createdAt || d.created_at); return date.getMonth() === month && date.getFullYear() === year; });
+
+      const prevMonthDate = new Date(year, month - 1, 1);
+      previousRawData = apiData.filter((d:any) => { const date = new Date(d.createdAt || d.created_at); return date.getMonth() === prevMonthDate.getMonth() && date.getFullYear() === prevMonthDate.getFullYear(); });
+      
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      totalHours = daysInMonth * 24;
+    }
+
+    // Nếu khoảng thời gian đang xem không có dữ liệu, trả về mặc định để thẻ UI vẫn hiện số 0
+    if (currentRawData.length === 0) return defaultMetrics;
+
+    const values = currentRawData.map(d => isWater ? (d.waterVolume || d.water_volume || d.value || 0) : (d.value || 0));
+    const prevValues = previousRawData.map(d => isWater ? (d.waterVolume || d.water_volume || d.value || 0) : (d.value || 0));
+
+    const sum = values.reduce((a, b) => a + b, 0);
     const avg = sum / values.length;
     const max = Math.max(...values);
     const min = Math.min(...values);
-    
-    let optimal = ""; let minBound = 0, maxBound = 100;
-    if (selectedSensor === "temp") { optimal = `${thresholds?.minTemp || 15}-${thresholds?.maxTemp || 35}°C`; minBound = thresholds?.minTemp || 15; maxBound = thresholds?.maxTemp || 35; }
-    if (selectedSensor === "moisture") { optimal = `>${thresholds?.moistureThreshold || 40}%`; minBound = thresholds?.moistureThreshold || 40; maxBound = 100; }
-    if (selectedSensor === "light") { optimal = `<${thresholds?.maxLight || 90}k lux`; minBound = 0; maxBound = thresholds?.maxLight || 90; }
 
     let optimalCount = 0;
-    values.forEach((v: number) => { if (v >= minBound && v <= maxBound && v > 0) optimalCount++; });
-    const nonZeroValues = values.filter(v => v > 0).length;
-    const optimalPercentage = nonZeroValues > 0 ? Math.round((optimalCount / nonZeroValues) * 100) : 100;
+    values.forEach((v: number) => { if (v >= minBound && v <= maxBound) optimalCount++; });
+    const optimalPercentage = Math.round((optimalCount / values.length) * 100);
+    const outOfBoundHours = (totalHours * (1 - optimalPercentage / 100)).toFixed(1);
+
+    const prevSum = prevValues.reduce((a, b) => a + b, 0);
+    const prevAvg = prevValues.length > 0 ? prevSum / prevValues.length : 0;
     
-    const outOfBoundItems = nonZeroValues - optimalCount;
-    const hoursPerItem = timeView === "Day" ? 4 : timeView === "Week" ? 24 : 24;
-    const outOfBoundHours = outOfBoundItems * hoursPerItem;
+    let trendValue = 0;
+    const currentMetric = isWater ? sum : avg;
+    const previousMetric = isWater ? prevSum : prevAvg;
 
-    const apiData = actualSensor?.historyData || [];
-    let prevSum = 0, prevAvg = 0, trendValue = 0;
-
-    if (apiData.length > 0) {
-       let pData = [];
-       if (timeView === "Day") {
-          const prevDay = new Date(activeDate); prevDay.setDate(prevDay.getDate() - 1);
-          const prevStr = prevDay.toLocaleDateString();
-          pData = apiData.filter((d:any) => new Date(d.createdAt || d.created_at).toLocaleDateString() === prevStr);
-       } else if (timeView === "Week") {
-          const prevWeekStart = new Date(activeDate); prevWeekStart.setDate(prevWeekStart.getDate() - (prevWeekStart.getDay() === 0 ? 6 : prevWeekStart.getDay() - 1) - 7); prevWeekStart.setHours(0,0,0,0);
-          const prevWeekEnd = new Date(prevWeekStart); prevWeekEnd.setDate(prevWeekStart.getDate() + 6); prevWeekEnd.setHours(23,59,59,999);
-          pData = apiData.filter((d:any) => { const date = new Date(d.createdAt || d.created_at); return date >= prevWeekStart && date <= prevWeekEnd; });
-       } else if (timeView === "Month") {
-          const prevMonth = new Date(activeDate.getFullYear(), activeDate.getMonth() - 1, 1);
-          pData = apiData.filter((d:any) => { const date = new Date(d.createdAt || d.created_at); return date.getMonth() === prevMonth.getMonth() && date.getFullYear() === prevMonth.getFullYear(); });
-       }
-
-       prevSum = pData.reduce((acc:any, curr:any) => acc + (isWater ? (curr.waterVolume || curr.water_volume || curr.value || 0) : (curr.value || 0)), 0);
-       prevAvg = pData.length ? prevSum / pData.length : 0;
-
-       const currentVal = isWater ? sum : avg;
-       const previousVal = isWater ? prevSum : prevAvg;
-
-       if (previousVal > 0) { trendValue = Math.round(((currentVal - previousVal) / previousVal) * 100); } 
-       else if (currentVal > 0) { trendValue = 100; }
+    if (previousMetric > 0) {
+      trendValue = Math.round(((currentMetric - previousMetric) / previousMetric) * 100);
+    } else if (currentMetric > 0) {
+      trendValue = 100;
     }
 
     let dropRate = 0; let estTime = 0;
-    if (selectedSensor === "moisture" && timeView === "Day" && values.length > 2) {
-      const activeValues = values.filter(v => v > 0);
-      if(activeValues.length >= 2) {
-        const lastVal = activeValues[activeValues.length - 1];
-        const prevVal = activeValues[activeValues.length - 2];
-        dropRate = (prevVal - lastVal) / 4; 
-        if (dropRate > 0 && lastVal > minBound) { estTime = (lastVal - minBound) / dropRate; }
+    if (selectedSensor === "moisture" && currentRawData.length > 1) {
+      const sortedData = [...currentRawData].sort((a,b) => new Date(a.createdAt || a.created_at).getTime() - new Date(b.createdAt || b.created_at).getTime());
+      
+      let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+      const n = sortedData.length;
+      const firstTime = new Date(sortedData[0].createdAt || sortedData[0].created_at).getTime();
+      
+      sortedData.forEach(d => {
+        const x = (new Date(d.createdAt || d.created_at).getTime() - firstTime) / (1000 * 60 * 60);
+        const y = d.value || 0;
+        sumX += x; sumY += y; sumXY += x * y; sumX2 += x * x;
+      });
+      
+      const denominator = (n * sumX2 - sumX * sumX);
+      if (denominator !== 0) {
+        const m = (n * sumXY - sumX * sumY) / denominator;
+        const b = (sumY - m * sumX) / n;
+        
+        dropRate = m;
+        if (m < 0) {
+          const lastData = sortedData[sortedData.length - 1];
+          const currentX = (new Date(lastData.createdAt || lastData.created_at).getTime() - firstTime) / (1000 * 60 * 60);
+          const targetX = (minBound - b) / m;
+          
+          estTime = targetX - currentX;
+          if (estTime < 0) estTime = 0;
+        }
       }
     }
 
     const pumpCycles = isWater ? values.filter(v => v > 0).length : 0;
 
     return {
-      sum, avg, max, min, trendValue, optimal, pumpCycles, optimalPercentage, outOfBoundHours,
-      dropRate: dropRate.toFixed(1), estTime: estTime.toFixed(1)
+      sum, avg, max, min, trendValue, optimal: optimalStr, pumpCycles, optimalPercentage, outOfBoundHours,
+      dropRate: Math.abs(dropRate).toFixed(2), estTime: estTime.toFixed(1)
     }
-  }, [chartData, selectedSensor, thresholds, activeDate, timeView, actualSensor, isWater]);
+  }, [selectedSensor, thresholds, activeDate, timeView, actualSensor, isWater]);
 
   const getUnit = () => { if (selectedSensor === "temp") return "°C"; if (selectedSensor === "moisture") return "%"; if (selectedSensor === "light") return "lux"; return "L" }
   const getAvgLabel = () => { if (isWater) return "Total Water Usage"; if (timeView === "Day") return "Daily Average"; if (timeView === "Week") return "Weekly Average"; return "Monthly Average"; }
@@ -246,7 +284,7 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
     const firstDay = new Date(activeDate.getFullYear(), activeDate.getMonth(), 1).getDay()
     const emptySlots = Array((firstDay === 0 ? 6 : firstDay - 1)).fill(null)
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
-    const maxDataValue = Math.max(...chartData.map((d: any) => d.value), 1);
+    const maxDataValue = chartData.length > 0 ? Math.max(...chartData.map((d: any) => Number(d.value)), 1) : 1;
 
     return (
       <div className="grid grid-cols-7 gap-2 mt-2 px-1">
@@ -272,7 +310,6 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
 
   return (
     <div className="space-y-5 pb-8 animate-in fade-in slide-in-from-bottom-4 duration-500" onClick={() => setActiveTooltip(null)}>
-      {}
       <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
         {[{ id: "temp", icon: Thermometer, label: "Temperature" }, { id: "moisture", icon: Droplets, label: "Moisture" }, { id: "light", icon: Sun, label: "Light" }, { id: "waterVolume", icon: Beaker, label: "Water" }].map(cat => (
           <button key={cat.id} onClick={() => { setSelectedSensor(cat.id); setActiveTooltip(null); }} className={cn("flex items-center gap-1.5 px-3 py-2 rounded-full whitespace-nowrap transition-all border", selectedSensor === cat.id ? "bg-primary text-primary-foreground border-primary font-semibold shadow-md" : "bg-card text-foreground border-border hover:bg-muted")}>
@@ -281,7 +318,6 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
         ))}
       </div>
 
-      {}
       <section className="flex flex-col items-center justify-center mb-2 space-y-4">
         <div className="flex bg-card rounded-full p-1 border border-border shadow-sm">
           {[{id: "Day", label: "Day"}, {id: "Week", label: "Week"}, {id: "Month", label: "Month"}].map((view: any) => (
@@ -298,7 +334,6 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
         </div>
       </section>
 
-      {}
       {metrics && (
         <section className="space-y-4">
           <div className="bg-card rounded-3xl p-6 border border-border flex flex-col items-center justify-center relative overflow-hidden shadow-sm">
@@ -307,7 +342,7 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
             </div>
             {activeTooltip === "hero" && (
               <div className="absolute right-4 top-12 w-48 bg-popover border border-border p-3 rounded-xl text-xs text-popover-foreground z-50 shadow-xl font-medium leading-relaxed text-center animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
-                {isWater ? "Total volume of water distributed across the entire selected period." : `Average sensor reading calculated across the selected ${timeView.toLowerCase()}.`}
+                {isWater ? "Total volume of water distributed across the entire selected period." : `Average sensor reading calculated directly from all raw data points in the selected ${timeView.toLowerCase()}.`}
               </div>
             )}
             <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none" style={{color: currentColor}}>{isWater ? <Beaker className="w-32 h-32" /> : <Activity className="w-32 h-32" />}</div>
@@ -325,12 +360,12 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
           <div className="grid grid-cols-2 gap-3">
             {!isWater ? (
               <>
-                <MetricCard id="highLow" activeTooltip={activeTooltip} setActiveTooltip={setActiveTooltip} icon={<AlertCircle />} title="High / Low" value={`${metrics.max.toFixed(1)} / ${metrics.min.toFixed(1)}`} unit={getUnit()} tooltip="The highest and lowest values recorded during this specific time period." />
+                <MetricCard id="highLow" activeTooltip={activeTooltip} setActiveTooltip={setActiveTooltip} icon={<AlertCircle />} title="High / Low" value={`${metrics.max.toFixed(1)} / ${metrics.min.toFixed(1)}`} unit={getUnit()} tooltip="The absolute highest and lowest raw values recorded during this period." />
                 <MetricCard id="optimal" activeTooltip={activeTooltip} setActiveTooltip={setActiveTooltip} icon={<Target />} title="Optimal Range" value={metrics.optimal} unit="" tooltip="The safe system boundaries configured in your settings. Staying within this range means the plant is healthy." />
                 <MetricCard id="timeOpt" activeTooltip={activeTooltip} setActiveTooltip={setActiveTooltip} icon={<Activity />} title="Time Optimal" value={`${metrics.optimalPercentage}`} unit="%" tooltip="The percentage of time the environment was perfectly maintained within your configured optimal range." />
                 
-                {selectedSensor === "moisture" && timeView === "Day" ? (
-                  <MetricCard id="nextWater" activeTooltip={activeTooltip} setActiveTooltip={setActiveTooltip} icon={<Zap />} title="Next Watering" value={`${metrics.estTime}`} unit="hrs" tooltip="Predictive estimate of when the auto-pump will trigger next, based on the current soil drop rate." />
+                {selectedSensor === "moisture" ? (
+                  <MetricCard id="nextWater" activeTooltip={activeTooltip} setActiveTooltip={setActiveTooltip} icon={<Zap />} title="Next Watering" value={`${metrics.estTime}`} unit="hrs" tooltip="Predictive estimate of when the auto-pump will trigger next, calculated using Linear Regression on raw moisture drop rates." />
                 ) : (
                   <MetricCard id="outBound" activeTooltip={activeTooltip} setActiveTooltip={setActiveTooltip} icon={<Clock />} title="Out of Bounds" value={`${metrics.outOfBoundHours}`} unit="hrs" tooltip="Total estimated duration where the metric dropped below or spiked above the optimal safe boundaries." />
                 )}
@@ -345,7 +380,6 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
         </section>
       )}
 
-      {}
       <section className="bg-card rounded-3xl p-4 shadow-sm border border-border mt-4">
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4 ml-1">Timeline</h3>
         <div className={cn("w-full transition-all", timeView === "Month" ? "min-h-[250px]" : "h-48")}>
@@ -368,7 +402,6 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
         </div>
       </section>
 
-      {}
       <Dialog open={showSourceData} onOpenChange={setShowSourceData}>
         <DialogContent className="max-w-md mx-4 rounded-3xl bg-card border-border">
           <DialogHeader><DialogTitle className="text-foreground text-sm font-bold">Data: {dateLabel}</DialogTitle></DialogHeader>
@@ -407,5 +440,3 @@ export function EmptyStateAnalytics() {
     </div>
   )
 }
-
-//Unanananânâ
