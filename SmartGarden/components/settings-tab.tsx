@@ -42,11 +42,11 @@ export function SettingsTab({ thresholds, onSaveThresholds, onAddPump, onDeleteP
             <Input type="number" value={localThresholds.moistureThreshold} onChange={(e) => setLocalThresholds({ ...localThresholds, moistureThreshold: +e.target.value })} className="rounded-xl bg-background border-border text-foreground focus-visible:ring-ring" />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground mb-2 block">Max Light (%)</label>
+            <label className="text-xs text-muted-foreground mb-2 block">Max Light (lx)</label>
             <Input type="number" value={localThresholds.maxLight} onChange={(e) => setLocalThresholds({ ...localThresholds, maxLight: +e.target.value })} className="rounded-xl bg-background border-border text-foreground focus-visible:ring-ring" />
           </div>
           
-          {/* Các trường mới thêm vào */}
+          {/* new added fields*/}
           <div>
             <label className="text-xs text-muted-foreground mb-2 block">Area (m²)</label>
             <Input 
