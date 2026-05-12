@@ -16,6 +16,10 @@ import { DashboardTab, EmptyState } from "./dashboard-tab"
 import { AnalyticsTab, EmptyStateAnalytics } from "./analytics-tab"
 import { SettingsTab, EmptyStateSettings } from "./settings-tab"
 
+import { ref, onValue, off } from "firebase/database"
+import { rtdb } from "@/lib/firebase"
+import { getDeviceId, requestPushNotificationPermission } from "@/lib/notification";
+import { setupForegroundMessageListener } from "@/lib/notification";
 
 const DEFAULT_THRESHOLDS = { minTemp: 15, maxTemp: 35, moistureThreshold: 40, maxLight: 90, area: 1, fieldCapacity: 1, rootDepth: 1 }
 
@@ -64,9 +68,121 @@ export function SmartGarden() {
   const currentThresholds = selectedPump?.thresholds || DEFAULT_THRESHOLDS
   const unreadAlerts = alertsList.filter((a) => a.unread).length
 
+  const [pumpForm, setPumpForm] = useState({
+    name: "",
+    temperatureMax: 35.0,     
+    temperatureMin: 15.0,     
+    lightIntensityMax: 1000.0, 
+    moistureThreshold: 60.0,  
+    fieldCapacity: 30.0,      
+    rootDepth: 20.0,          
+    area: 50.0                
+  });
+
   const handleLogout = () => { 
     setAuthState("welcome"); setShowProfile(false); setPumps([]); setSelectedPump(null); setCurrentUser(null); setActiveTab("home"); localStorage.removeItem("token"); showToast("Logged out successfully!") 
   }
+
+  const handleLoginSuccess = async (userData: any) => {
+    const validUserId = userData.userId || userData.id;
+    
+    if (validUserId) {
+      try {
+        const userRes = await api.get(`/api/user/${validUserId}`);
+        setCurrentUser(userRes.data);
+
+        try {
+          const connRes = await api.get(`/api/connection/${validUserId}`);
+          if (connRes.data && connRes.data.connectionId) {
+            setUserConnectionId(connRes.data.connectionId);
+          }
+        } catch (connError) {
+          showToast("Warning: Could not fetch connection info", "error");
+        }
+        const fcmToken = await requestPushNotificationPermission();
+        console.log("FCM Token:", fcmToken);
+        const deviceId = getDeviceId();
+
+        if (fcmToken && deviceId) {
+          try {
+            await api.post('/api/notification/register-device', {
+              userId: validUserId,
+              phoneId: deviceId, 
+              token: fcmToken    
+            });
+            console.log("Device successfully registered for push notifications!");
+          } catch (err) {
+            console.warn("Notification API not ready or network error:", err);
+          }
+        }
+
+      } catch (e) {
+        setCurrentUser({ id: validUserId, fullName: "User", userName: "user" });
+      }
+      
+      setAuthState("authenticated");
+      fetchUserPumps(validUserId);
+    } else {
+      setAuthState("authenticated");
+    }
+  };
+
+  const handleCreatePump = async () => {
+    if (!pumpForm.name.trim()) {
+      showToast("Please enter a pump name!", "error");
+      return;
+    }
+    setIsAddingPump(true);
+    setAddError(null);
+
+    try {
+      const uniqueFeed = `SmartGarden/Pump_${Date.now()}`; 
+      
+      const connPayload = {
+        userId: currentUser.id || currentUser.userId,
+        brokerName: "system",
+        feed: uniqueFeed,
+        password: "DADN-hk2-2026", 
+        address: "ssl://205dd780c5cd4cd6af5c18efd1914a37.s1.eu.hivemq.cloud:8883"
+      };
+      
+      const connRes = await api.post('/api/connection', connPayload);
+      const newConnectionId = connRes.data.connectionId; 
+
+      if (!newConnectionId) {
+         showToast("Error: Could not retrieve Connection ID from server.", "error");
+         return;
+      }
+
+      const pumpPayload = {
+         name: pumpForm.name,
+         connectionId: newConnectionId, 
+         userId: currentUser.id || currentUser.userId,
+         temperatureMax: pumpForm.temperatureMax,
+         temperatureMin: pumpForm.temperatureMin,
+         lightIntensityMax: pumpForm.lightIntensityMax,
+         moistureThreshold: pumpForm.moistureThreshold,
+         fieldCapacity: pumpForm.fieldCapacity,
+         rootDepth: pumpForm.rootDepth,
+         area: pumpForm.area
+      };
+
+      await api.post('/api/pump', pumpPayload);
+      showToast("Pump added successfully!", "success");
+
+      setPumpForm({
+        name: "", temperatureMax: 35.0, temperatureMin: 15.0, 
+        lightIntensityMax: 1000.0, moistureThreshold: 60.0, 
+        fieldCapacity: 30.0, rootDepth: 20.0, area: 50.0
+      })
+      setShowAddPump(false);
+      fetchUserPumps(currentUser.id || currentUser.userId);
+    } catch (error) {
+      setAddError("Failed to add pump. Please try again!");
+    } finally {
+      setIsAddingPump(false);
+    }
+  };
 
   const showToast = (message: string, type: "success" | "error" = "success") => {
     setToast({ message, visible: true, type })
@@ -119,65 +235,134 @@ export function SmartGarden() {
   }
 
   useEffect(() => {
+    setupForegroundMessageListener();
+  }, []);
+
+  useEffect(() => {
     const fetchPumpDetails = async (pumpId: number) => {
+      setPumpLogs([]);
       try {
-        const deviceRes = await api.get(`/api/device/by-pump?pumpId=${pumpId}`)
-        const devices = deviceRes.data
+        const deviceRes = await api.get(`/api/device/by-pump?pumpId=${pumpId}`);
+        const devices = deviceRes.data;
+        
         const sensors: any[] = devices.map((d: any) => ({
           id: d.id,
           type: d.type === "TEMPERATURE" ? "Temperature" : d.type === "MOISTURE" ? "Moisture" : "Light",
-          macId: `ID: ${d.connectId}`, connectId: d.connectId, status: "Online", historyData: []
-        }))
+          macId: `ID: ${d.connectId}`, 
+          connectId: d.connectId, 
+          status: "Online", 
+          historyData: []
+        }));
         
-        let temp = 0, moisture = 0, light = 0
+        let temp = 0, moisture = 0, light = 0;
 
         for (let i = 0; i < sensors.length; i++) {
           try {
-            const dataRes = await api.get(`/api/sensor/data/${sensors[i].id}`)
+            const dataRes = await api.get(`/api/sensor/data/${sensors[i].id}`);
             if (dataRes.data && dataRes.data.length > 0) {
               sensors[i].historyData = dataRes.data; 
               const latestVal = dataRes.data[dataRes.data.length - 1].value; 
-              if (sensors[i].type === "Temperature") temp = latestVal
-              if (sensors[i].type === "Moisture") moisture = latestVal
-              if (sensors[i].type === "Light") light = latestVal
+              if (sensors[i].type === "Temperature") temp = latestVal;
+              if (sensors[i].type === "Moisture") moisture = latestVal;
+              if (sensors[i].type === "Light") light = latestVal;
             }
-          } catch (e) { sensors[i].status = "Offline" }
+          } catch (e) { 
+            sensors[i].status = "Offline";
+          }
         }
 
-        // const waterVirtualSensor: any = {
-        //   id: "water_volume_id", type: "waterVolume", macId: "Pump Log", connectId: pumpId, status: "Online", historyData: []
-        // };
-        // try {
-        //   const logRes = await api.get(`/api/pumpLog/pump/${pumpId}`);
-        //   if (logRes.data) {
-        //      waterVirtualSensor.historyData = logRes.data;
-        //      setPumpLogs(prev => prev.length > 0 ? prev : logRes.data); 
-        //   }
-        // } catch (e) {
-        //   try {
-        //      const logRes2 = await api.get(`/api/pump-log/pump/${pumpId}`);
-        //      if (logRes2.data) {
-        //         waterVirtualSensor.historyData = logRes2.data;
-        //         setPumpLogs(prev => prev.length > 0 ? prev : logRes2.data);
-        //      }
-        //   } catch (e2) {}
-        // }
-        // sensors.push(waterVirtualSensor);
+        const waterVirtualSensor: any = {
+          id: "water_volume_id", type: "waterVolume", macId: "Pump Log", connectId: pumpId, status: "Online", historyData: []
+        };
         
-        setPumps(prev => prev.map(p => p.id === pumpId ? { ...p, sensors, sensorData: { ...p.sensorData, temp, moisture, light } } : p))
-        setSelectedPump(prev => prev?.id === pumpId ? { ...prev, sensors, sensorData: { ...prev.sensorData, temp, moisture, light } } : prev)
-      } catch (error) {}
-    }
+        try {
+          let logRes = await api.get(`/api/pumpLog/pump/${pumpId}`).catch(() => api.get(`/api/pump-log/pump/${pumpId}`));
+          if (logRes && logRes.data) {
+             waterVirtualSensor.historyData = logRes.data;
+             setPumpLogs(logRes.data);
+          } else {
+          setPumpLogs([]);
+        } 
+      }catch (e) {
+           console.log("Cannot retrieve Pump Log data");
+            setPumpLogs([]); 
+        }
+        
+        sensors.push(waterVirtualSensor);
+
+        setPumps(prev => prev.map(p => p.id === pumpId ? { ...p, sensors, sensorData: { ...p.sensorData, temp, moisture, light } } : p));
+        setSelectedPump(prev => prev?.id === pumpId ? { ...prev, sensors, sensorData: { ...prev.sensorData, temp, moisture, light } } : prev);
+      } catch (error) {
+        console.error("Lỗi lấy chi tiết máy bơm:", error);
+      }
+    };
 
     if (selectedPump && currentUser) {
       const userId = currentUser.id || currentUser.userId;
-      fetchPumpDetails(selectedPump.id)
-      fetchUserAlerts(userId)
+      fetchPumpDetails(selectedPump.id);
+      fetchUserAlerts(userId); 
 
-      const interval = setInterval(() => { fetchPumpDetails(selectedPump.id); fetchUserAlerts(userId) }, 15000)
-      return () => clearInterval(interval)
+      const dbRef = ref(rtdb, `updates/${userId}`);
+      
+      onValue(dbRef, (snapshot) => {
+        const newData = snapshot.val();
+        if (newData && newData.type) {
+
+          setPumps(prevPumps => prevPumps.map(pump => {
+            if (pump.id !== selectedPump.id) return pump;
+
+            let newTemp = pump.sensorData.temp;
+            let newMoisture = pump.sensorData.moisture;
+            let newLight = pump.sensorData.light;
+
+            if (newData.type === "TEMPERATURE") newTemp = newData.value;
+            if (newData.type === "MOISTURE") newMoisture = newData.value;
+            if (newData.type === "LIGHT") newLight = newData.value;
+
+            const updatedSensors = pump.sensors.map(sensor => {
+              if (sensor.type.toUpperCase() === newData.type) {
+                return { ...sensor, status: "Online" as const, historyData: [...(sensor.historyData || []), newData] };
+              }
+              return sensor;
+            });
+
+            return {
+              ...pump,
+              sensorData: { ...pump.sensorData, temp: newTemp, moisture: newMoisture, light: newLight },
+              sensors: updatedSensors
+            };
+          }));
+
+          setSelectedPump(prev => {
+            if (!prev) return prev;
+            let newTemp = prev.sensorData.temp;
+            let newMoisture = prev.sensorData.moisture;
+            let newLight = prev.sensorData.light;
+
+            if (newData.type === "TEMPERATURE") newTemp = newData.value;
+            if (newData.type === "MOISTURE") newMoisture = newData.value;
+            if (newData.type === "LIGHT") newLight = newData.value;
+
+            const updatedSensors = prev.sensors.map(sensor => {
+              if (sensor.type.toUpperCase() === newData.type) {
+                return { ...sensor, status: "Online" as const, historyData: [...(sensor.historyData || []), newData] };
+              }
+              return sensor;
+            });
+
+            return {
+              ...prev,
+              sensorData: { ...prev.sensorData, temp: newTemp, moisture: newMoisture, light: newLight },
+              sensors: updatedSensors
+            };
+          });
+        }
+      });
+      return () => {
+        off(dbRef);
+      };
     }
-  }, [selectedPump?.id, currentUser])
+  }, [selectedPump?.id, currentUser]);
 
   const handleUpdateThresholds = async (newThresholds: any) => {
     if (!selectedPump || !currentUser) return
@@ -298,8 +483,10 @@ export function SmartGarden() {
 
   const handleAddSensor = async () => {
     if (!selectedPump) return;
-    if (!userConnectionId) {
-      showToast("System error: Connection ID not found", "error");
+    const currentConnectionId = selectedPump.connectionId;
+
+    if (!currentConnectionId) {
+      showToast("System error: Connection ID not found for this pump", "error");
       return;
     }
 
@@ -311,7 +498,7 @@ export function SmartGarden() {
       id: tempId,
       type: sensorTypeToAdd as any,
       macId: `System Connection`,
-      connectId: userConnectionId,
+      connectId: currentConnectionId, 
       status: "Offline",
       connectionStatus: "connecting"
     };
@@ -325,13 +512,13 @@ export function SmartGarden() {
       const response = await api.post('/api/device', {
         name: `${sensorTypeToAdd} Sensor`, 
         type: sensorTypeToAdd.toUpperCase(), 
-        connectId: userConnectionId, 
+        connectId: currentConnectionId, 
         pumpId: selectedPump.id
       });
       
       const realId = response?.data?.id || response?.data?.deviceId || tempId;
       const finalizedSensors = updatedSensors.map(s => 
-        s.id === tempId ? { ...s, id: realId, connectionStatus: undefined, status: "Offline" as const } : s
+        s.id === tempId ? { ...s, id: realId, connectionStatus: undefined, status: "Online" as const } : s
       );
       
       setSelectedPump({ ...selectedPump, sensors: finalizedSensors });
@@ -406,31 +593,7 @@ export function SmartGarden() {
   form={loginForm} 
   setForm={setLoginForm} 
   onBack={() => setAuthState("welcome")} 
-  onLoginSuccess={async (userData: any) => { 
-    const validUserId = userData.userId || userData.id; 
-    if (validUserId) { 
-      try { 
-        const userRes = await api.get(`/api/user/${validUserId}`); 
-        setCurrentUser(userRes.data); 
-
-        try {
-          const connRes = await api.get(`/api/connection/${validUserId}`);
-          if (connRes.data && connRes.data.connectionId) {
-            setUserConnectionId(connRes.data.connectionId);
-          }
-        } catch (connError) {
-          showToast("Warning: Could not fetch connection info", "error");
-        }
-
-      } catch (e) { 
-        setCurrentUser({ id: validUserId, fullName: "User", userName: "user" }); 
-      }
-      setAuthState("authenticated"); 
-      fetchUserPumps(validUserId); 
-    } else { 
-      setAuthState("authenticated"); 
-    }
-  }} 
+  onLoginSuccess={handleLoginSuccess} 
   onSwitchToRegister={() => setAuthState("register")} 
 />}
         {authState === "register" && <RegisterScreen form={registerForm} setForm={setRegisterForm} onBack={() => setAuthState("welcome")} onRegisterSuccess={() => { setAuthState("login"); showToast("Registration successful! Please login.") }} onSwitchToLogin={() => setAuthState("login")} />}
@@ -510,26 +673,95 @@ export function SmartGarden() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showAddPump} onOpenChange={(open) => { setShowAddPump(open); if (!open) { setAddError(null); setIsAddingPump(false) }}}>
-        <DialogContent className="max-w-md mx-4 rounded-3xl">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><Plus className="w-5 h-5 text-primary" />Add New Pump</DialogTitle></DialogHeader>
-          {addError && <div className="bg-destructive/10 rounded-xl p-4 flex gap-3"><AlertCircle className="w-5 h-5 text-destructive" /><p className="text-sm text-destructive">{addError}</p></div>}
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm block mb-2">Pump Name</label>
-              <Input placeholder="e.g., Rose Garden" value={newPumpName} onChange={(e) => setNewPumpName(e.target.value)} disabled={isAddingPump} className="rounded-xl" />
-            </div>
-            {}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddPump(false)} disabled={isAddingPump}>Cancel</Button>
-            {}
-            <Button onClick={handleAddPump} disabled={!newPumpName.trim() || isAddingPump || !userConnectionId}>
-              {isAddingPump ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Adding...</> : "Add"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <Dialog open={showAddPump} onOpenChange={(open) => { 
+  setShowAddPump(open); 
+  if (!open) { 
+    setAddError(null); 
+    setIsAddingPump(false);
+    // Tùy chọn: Reset form khi đóng modal
+    setPumpForm({
+      name: "", temperatureMax: 35.0, temperatureMin: 15.0, 
+      lightIntensityMax: 1000.0, moistureThreshold: 60.0, 
+      fieldCapacity: 30.0, rootDepth: 20.0, area: 50.0
+    });
+  }
+}}>
+  <DialogContent className="max-w-md mx-4 rounded-3xl">
+    <DialogHeader>
+      <DialogTitle className="flex items-center gap-2">
+        <Plus className="w-5 h-5 text-primary" />Add New Pump
+      </DialogTitle>
+    </DialogHeader>
+    
+    {addError && (
+      <div className="bg-destructive/10 rounded-xl p-4 flex gap-3">
+        <AlertCircle className="w-5 h-5 text-destructive" />
+        <p className="text-sm text-destructive">{addError}</p>
+      </div>
+    )}
+    
+    <div className="space-y-4">
+      {/* Ô nhập tên máy bơm (Chiếm toàn bộ chiều rộng) */}
+      <div>
+        <label className="text-sm font-medium block mb-2">Pump Name</label>
+        <Input 
+          placeholder="e.g., Rose Garden" 
+          value={pumpForm.name} 
+          onChange={(e) => setPumpForm({ ...pumpForm, name: e.target.value })} 
+          disabled={isAddingPump} 
+          className="rounded-xl" 
+        />
+      </div>
+
+      {/* Khu vực cấu hình 7 thông số (Chia làm 2 cột cho gọn) */}
+      <div className="grid grid-cols-2 gap-3 p-3 bg-muted/30 rounded-xl border border-border/50">
+        <div className="col-span-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            Environment Settings (Default)
+          </p>
+        </div>
+        
+        <div>
+          <label className="text-xs block mb-1">Max Temp (°C)</label>
+          <Input type="number" value={pumpForm.temperatureMax} onChange={(e) => setPumpForm({ ...pumpForm, temperatureMax: parseFloat(e.target.value) || 0 })} disabled={isAddingPump} className="h-8 text-sm" />
+        </div>
+        <div>
+          <label className="text-xs block mb-1">Min Temp (°C)</label>
+          <Input type="number" value={pumpForm.temperatureMin} onChange={(e) => setPumpForm({ ...pumpForm, temperatureMin: parseFloat(e.target.value) || 0 })} disabled={isAddingPump} className="h-8 text-sm" />
+        </div>
+        <div>
+          <label className="text-xs block mb-1">Max Light (Lux)</label>
+          <Input type="number" value={pumpForm.lightIntensityMax} onChange={(e) => setPumpForm({ ...pumpForm, lightIntensityMax: parseFloat(e.target.value) || 0 })} disabled={isAddingPump} className="h-8 text-sm" />
+        </div>
+        <div>
+          <label className="text-xs block mb-1">Moisture Threshold (%)</label>
+          <Input type="number" value={pumpForm.moistureThreshold} onChange={(e) => setPumpForm({ ...pumpForm, moistureThreshold: parseFloat(e.target.value) || 0 })} disabled={isAddingPump} className="h-8 text-sm" />
+        </div>
+        <div>
+          <label className="text-xs block mb-1">Field Capacity</label>
+          <Input type="number" value={pumpForm.fieldCapacity} onChange={(e) => setPumpForm({ ...pumpForm, fieldCapacity: parseFloat(e.target.value) || 0 })} disabled={isAddingPump} className="h-8 text-sm" />
+        </div>
+        <div>
+          <label className="text-xs block mb-1">Root Depth (cm)</label>
+          <Input type="number" value={pumpForm.rootDepth} onChange={(e) => setPumpForm({ ...pumpForm, rootDepth: parseFloat(e.target.value) || 0 })} disabled={isAddingPump} className="h-8 text-sm" />
+        </div>
+        <div className="col-span-2">
+          <label className="text-xs block mb-1">Area (m²)</label>
+          <Input type="number" value={pumpForm.area} onChange={(e) => setPumpForm({ ...pumpForm, area: parseFloat(e.target.value) || 0 })} disabled={isAddingPump} className="h-8 text-sm" />
+        </div>
+      </div>
+    </div>
+    
+    <DialogFooter>
+      <Button variant="outline" onClick={() => setShowAddPump(false)} disabled={isAddingPump}>
+        Cancel
+      </Button>
+      <Button onClick={handleCreatePump} disabled={!pumpForm.name.trim() || isAddingPump}>
+        {isAddingPump ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Adding...</> : "Add"}
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
 
       <Dialog open={showAddSensor} onOpenChange={(open) => { setShowAddSensor(open); if (!open) { setNewSensorType(availableSensorTypes[0] || "Temperature") }}}>
         <DialogContent className="max-w-md mx-4 rounded-3xl">
@@ -547,10 +779,16 @@ export function SmartGarden() {
             {}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddSensor(false)}>Cancel</Button>
-            {}
-            <Button onClick={handleAddSensor} disabled={!userConnectionId}>Add</Button>
-          </DialogFooter>
+  <Button variant="outline" onClick={() => setShowAddSensor(false)}>Cancel</Button>
+  
+  {}
+  <Button 
+    onClick={handleAddSensor} 
+    disabled={!selectedPump?.connectionId || availableSensorTypes.length === 0}
+  >
+    Add
+  </Button>
+</DialogFooter>
         </DialogContent>
       </Dialog>
 
