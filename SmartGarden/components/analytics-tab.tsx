@@ -153,7 +153,7 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
       });
     }
     return []
-  }, [timeView, activeDate, selectedSensor, actualSensor, isWater]);
+  }, [timeView, activeDate, selectedSensor, actualSensor, isWater, sensors, actualSensor?.historyData?.length]);
 
   // Metrics calculation
   const metrics = useMemo(() => {
