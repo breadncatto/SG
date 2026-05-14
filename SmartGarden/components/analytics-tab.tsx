@@ -7,31 +7,58 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
-const MetricCard = ({ id, icon, title, value, unit, tooltip, valueColor = "text-foreground", activeTooltip, setActiveTooltip }: any) => {
+const MetricCard = ({ id, icon, title, value, unit, tooltip, valueColor = "text-foreground", activeTooltip, setActiveTooltip, centered = false }: any) => {
   const isActive = activeTooltip === id;
   return (
-    <div className="bg-card p-4 rounded-2xl border border-border flex flex-col relative">
-      <div 
-        className="absolute right-2 top-2 z-20 cursor-pointer p-2"
-        onClick={(e) => { e.stopPropagation(); setActiveTooltip(isActive ? null : id); }}
-      >
-        <Info className={cn("w-4 h-4 transition-colors", isActive ? "text-primary" : "text-muted-foreground")} />
-      </div>
-      {isActive && (
-        <div 
-          className="absolute right-0 top-12 w-48 bg-popover border border-border p-3 rounded-xl text-xs text-popover-foreground z-50 shadow-xl font-medium leading-relaxed animate-in fade-in zoom-in-95 duration-200"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {tooltip}
+    <div className={cn(
+      "bg-card p-5 rounded-[2rem] border border-border flex flex-col relative shadow-[0_8px_30px_rgb(0,0,0,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all group",
+      centered && "items-center text-center justify-center"
+    )}>
+      {}
+      <div className="absolute inset-0 overflow-hidden rounded-[2rem] pointer-events-none z-0">
+        <div className={cn("absolute opacity-[0.03] group-hover:scale-110 transition-transform duration-500", centered ? "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" : "-right-4 -bottom-4")}>
+          {React.cloneElement(icon, { className: "w-24 h-24" })}
         </div>
-      )}
-      <span className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1.5 uppercase tracking-wider pr-6">
-        {React.cloneElement(icon, { className: cn("w-3.5 h-3.5", icon.props.className) })}
-        {title}
-      </span>
-      <span className={cn("text-xl font-black mt-1", valueColor)}>
-        {value} <span className="text-[10px] font-medium text-muted-foreground ml-0.5">{unit}</span>
-      </span>
+      </div>
+
+      {}
+      {}
+      <div className="absolute right-3 top-3 z-30">
+        {/* info */}
+        <button 
+          onClick={(e) => { e.stopPropagation(); setActiveTooltip(isActive ? null : id); }}
+          className="cursor-pointer p-2 hover:bg-muted rounded-full transition-colors block"
+        >
+          <Info className={cn("w-4 h-4 transition-colors", isActive ? "text-primary" : "text-muted-foreground/50")} />
+        </button>
+        
+        {/* tooltip */}
+        {isActive && (
+          <div 
+            className={cn(
+              "absolute top-10 right-0 w-56 bg-[#529B75] text-white p-4 rounded-2xl text-[11px] z-50 shadow-2xl font-medium leading-relaxed animate-in fade-in slide-in-from-top-2 text-left",
+              centered && "right-auto left-1/2 -translate-x-1/2 sm:right-0 sm:left-auto sm:translate-x-0" 
+            )}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {tooltip}
+          </div>
+        )}
+      </div>
+      {}
+
+      {/* title + value */}
+      <div className={cn("flex items-center gap-2 z-10", centered ? "flex-col mb-2" : "mb-4")}>
+        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+          {React.cloneElement(icon, { className: "w-4 h-4 text-primary" })}
+        </div>
+        <span className="text-[10px] font-extrabold text-muted-foreground uppercase tracking-widest">{title}</span>
+      </div>
+
+      <div className={cn("z-10", !centered && "mt-auto")}>
+        <span className={cn("text-3xl font-black tracking-tighter", valueColor)}>{value}</span>
+        {unit && <span className="text-xs font-bold text-muted-foreground ml-1">{unit}</span>}
+      </div>
     </div>
   );
 };
@@ -121,11 +148,19 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
 
     if (timeView === "Day") {
       const dayStr = activeDate.toLocaleDateString();
-      const dayData = apiData.filter((d:any) => new Date(d.createdAt || d.created_at).toLocaleDateString() === dayStr);
+      
+      const timeFixedData = apiData.map((d:any) => {
+        const rawTime = d.createdAt || d.created_at;
+        const fixedTime = (rawTime && !rawTime.endsWith('Z')) ? `${rawTime}Z` : rawTime;
+        return { ...d, _fixedDate: new Date(fixedTime) };
+      });
+
+      const dayData = timeFixedData.filter((d:any) => d._fixedDate.toLocaleDateString() === dayStr);
+      
       return ["0-4", "4-8", "8-12", "12-16", "16-20", "20-24"].map((time, i) => {
         const startHour = i * 4; const endHour = startHour + 3;
         const slotData = dayData.filter((d:any) => {
-          const h = new Date(d.createdAt || d.created_at).getHours();
+          const h = d._fixedDate.getHours();
           return h >= startHour && h <= endHour;
         });
         return { time, value: Number(aggregate(slotData).toFixed(1)) };
@@ -168,7 +203,6 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
 
     const apiData = actualSensor?.historyData || [];
     
-    // Nếu chưa từng có dữ liệu cho sensor này, trả về mặc định
     if (!apiData || apiData.length === 0) return defaultMetrics;
 
     let currentRawData: any[] = [];
@@ -205,7 +239,6 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
       totalHours = daysInMonth * 24;
     }
 
-    // Nếu khoảng thời gian đang xem không có dữ liệu, trả về mặc định để thẻ UI vẫn hiện số 0
     if (currentRawData.length === 0) return defaultMetrics;
 
     const values = currentRawData.map(d => isWater ? (d.waterVolume || d.water_volume || d.value || 0) : (d.value || 0));
@@ -336,24 +369,32 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
 
       {metrics && (
         <section className="space-y-4">
-          <div className="bg-card rounded-3xl p-6 border border-border flex flex-col items-center justify-center relative overflow-hidden shadow-sm">
-            <div className="absolute right-3 top-3 z-20 cursor-pointer p-2" onClick={(e) => { e.stopPropagation(); setActiveTooltip(activeTooltip === "hero" ? null : "hero"); }}>
-              <Info className={cn("w-5 h-5 transition-colors", activeTooltip === "hero" ? "text-primary" : "text-muted-foreground")} />
+          {/* hero card */}
+          <div className="relative rounded-[2.5rem] p-8 flex flex-col items-center justify-center overflow-hidden shadow-md min-h-[220px] w-full">
+            {/* bg */}
+            <div className="absolute inset-0 bg-cover bg-center z-0" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1555037015-1498966bcd7c?q=80&w=1887&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D')" }} />
+            {}
+            <div className="absolute inset-0 bg-[#30714F]/85 z-0 backdrop-blur-[1px]" />
+
+            <div className="absolute right-4 top-4 z-20 cursor-pointer p-2 bg-white/10 backdrop-blur-md rounded-full hover:bg-white/20 transition-colors" onClick={(e) => { e.stopPropagation(); setActiveTooltip(activeTooltip === "hero" ? null : "hero"); }}>
+              <Info className={cn("w-5 h-5 transition-colors", activeTooltip === "hero" ? "text-white" : "text-white/60")} />
             </div>
+            
             {activeTooltip === "hero" && (
-              <div className="absolute right-4 top-12 w-48 bg-popover border border-border p-3 rounded-xl text-xs text-popover-foreground z-50 shadow-xl font-medium leading-relaxed text-center animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+              <div className="absolute right-14 top-4 w-48 bg-[#529B75] text-white p-3 rounded-xl text-[11px] z-50 shadow-xl font-medium leading-relaxed text-center animate-in fade-in zoom-in" onClick={(e) => e.stopPropagation()}>
                 {isWater ? "Total volume of water distributed across the entire selected period." : `Average sensor reading calculated directly from all raw data points in the selected ${timeView.toLowerCase()}.`}
               </div>
             )}
-            <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none" style={{color: currentColor}}>{isWater ? <Beaker className="w-32 h-32" /> : <Activity className="w-32 h-32" />}</div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 z-10">{getAvgLabel()}</p>
-            <div className="flex items-baseline gap-1.5 z-10">
-              <span className="text-[40px] leading-none font-black text-foreground">{isWater ? metrics.sum.toFixed(0) : metrics.avg.toFixed(1)}</span>
-              <span className="text-base font-medium text-muted-foreground">{getUnit()}</span>
+
+            <p className="text-[10px] font-extrabold text-[#EFF1E2]/70 uppercase tracking-[0.2em] mb-2 z-10">{getAvgLabel()}</p>
+            <div className="flex items-baseline gap-2 z-10">
+              <span className="text-[56px] leading-none font-black text-white tracking-tighter">{isWater ? metrics.sum.toFixed(0) : metrics.avg.toFixed(1)}</span>
+              <span className="text-lg font-bold text-white/80">{getUnit()}</span>
             </div>
-            <div className="mt-3 flex items-center gap-1.5 text-xs font-bold z-10 bg-background/60 px-3 py-1.5 rounded-full border border-border/50">
-              {metrics.trendValue > 0 ? <TrendingUp className="w-3.5 h-3.5 text-destructive" /> : <TrendingDown className="w-3.5 h-3.5 text-primary" />}
-              <span className={metrics.trendValue > 0 ? "text-destructive" : "text-primary"}>{Math.abs(metrics.trendValue)}% vs prev {timeView.toLowerCase()}</span>
+            
+            <div className="mt-5 flex items-center gap-1.5 text-[10px] font-bold z-10 bg-white/10 backdrop-blur-md px-4 py-2 rounded-full border border-white/20">
+              {metrics.trendValue > 0 ? <TrendingUp className="w-3.5 h-3.5 text-[#EADC62]" /> : <TrendingDown className="w-3.5 h-3.5 text-white" />}
+              <span className={metrics.trendValue > 0 ? "text-[#EADC62]" : "text-white"}>{Math.abs(metrics.trendValue)}% vs prev {timeView.toLowerCase()}</span>
             </div>
           </div>
 
@@ -361,7 +402,7 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
             {!isWater ? (
               <>
                 <MetricCard id="highLow" activeTooltip={activeTooltip} setActiveTooltip={setActiveTooltip} icon={<AlertCircle />} title="High / Low" value={`${metrics.max.toFixed(1)} / ${metrics.min.toFixed(1)}`} unit={getUnit()} tooltip="The absolute highest and lowest raw values recorded during this period." />
-                <MetricCard id="optimal" activeTooltip={activeTooltip} setActiveTooltip={setActiveTooltip} icon={<Target />} title="Optimal Range" value={metrics.optimal} unit="" tooltip="The safe system boundaries configured in your settings. Staying within this range means the plant is healthy." />
+                <MetricCard id="optimal" activeTooltip={activeTooltip} setActiveTooltip={setActiveTooltip} icon={<Target />} title="Optimal Range" value={metrics.optimal}  unit="" tooltip="The safe system boundaries configured in your settings. Staying within this range means the plant is healthy." />
                 <MetricCard id="timeOpt" activeTooltip={activeTooltip} setActiveTooltip={setActiveTooltip} icon={<Activity />} title="Time Optimal" value={`${metrics.optimalPercentage}`} unit="%" tooltip="The percentage of time the environment was perfectly maintained within your configured optimal range." />
                 
                 {selectedSensor === "moisture" ? (
