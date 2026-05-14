@@ -7,7 +7,19 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { SensorType, Sensor } from "@/types/smart-garden"
 
-export function DashboardTab({ sensorData, mode, onModeSwitch, isPumpOn, onPowerToggle, onSensorClick, thresholds, sensors, onAddSensor, onDeleteSensor, allSensorsConnected, pumpLogs }: any) {
+export function DashboardTab({ 
+  sensorData, mode, onModeSwitch, isPumpOn, onPowerToggle, onSensorClick, 
+  thresholds, sensors, onAddSensor, onDeleteSensor, allSensorsConnected, 
+  pumpLogs, 
+  onNavigateToLogs 
+}: any) {
+  const recentLogs = [...(pumpLogs || [])]
+    .sort((a, b) => {
+      const timeA = new Date(a.timestamp || a.createdAt || 0).getTime();
+      const timeB = new Date(b.timestamp || b.createdAt || 0).getTime();
+      return timeB - timeA;
+    })
+    .slice(0, 3);
   const hasTemp = sensors.some((s: Sensor) => s.type === "Temperature")
   const hasMoisture = sensors.some((s: Sensor) => s.type === "Moisture")
   const hasLight = sensors.some((s: Sensor) => s.type === "Light")
@@ -40,85 +52,106 @@ export function DashboardTab({ sensorData, mode, onModeSwitch, isPumpOn, onPower
       </section>
 
       <section className="bg-card rounded-3xl p-5 shadow-sm">
-        <h2 className="text-sm font-medium text-muted-foreground mb-4">Pump Control</h2>
         <div className="flex items-center justify-between mb-6">
-          <span className="text-foreground font-medium">Mode</span>
+          <span className="text-foreground font-semibold">Pump Control</span>
           <div className="flex bg-muted rounded-full p-1">
             {["AUTO", "MANUAL"].map((m) => (
-              <button key={m} onClick={() => { if (mode !== m) onModeSwitch(m) }} className={cn("px-4 py-2 rounded-full text-sm font-medium", mode === m ? "bg-card text-foreground shadow-sm" : "text-muted-foreground")}>{m}</button>
+              <button 
+                key={m} 
+                onClick={() => { if (mode !== m) onModeSwitch(m) }} 
+                className={cn("px-4 py-2 rounded-full text-xs font-bold transition-all", 
+                  mode === m ? "bg-card text-primary shadow-sm" : "text-muted-foreground"
+                )}
+              >
+                {m}
+              </button>
             ))}
           </div>
         </div>
-        <div className={cn("flex items-center justify-between p-4 rounded-2xl", mode === "AUTO" ? "opacity-50" : "opacity-100", isPumpOn ? "bg-primary/10" : "bg-muted")}>
+
+        <div className={cn("flex items-center justify-between p-4 rounded-2xl border transition-all", 
+          isPumpOn ? "bg-primary/5 border-primary/20" : "bg-muted/50 border-transparent"
+        )}>
           <div className="flex items-center gap-3">
-            <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center", isPumpOn ? "bg-primary" : "bg-muted-foreground/20")}>
+            <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center transition-all", 
+              isPumpOn ? "bg-primary shadow-lg shadow-primary/20" : "bg-muted-foreground/20")
+            }>
               <Power className={cn("w-6 h-6", isPumpOn ? "text-primary-foreground" : "text-muted-foreground")} />
             </div>
-            <div>
-              <p className="font-medium text-foreground">Pump Motor</p>
-              <p className="text-sm text-muted-foreground">{mode === "AUTO" ? "Auto-controlled" : isPumpOn ? "Running" : "Stopped"}</p>
-            </div>
+            <p className="font-bold text-sm text-foreground">
+              {isPumpOn ? "Running" : "Stopped"}
+            </p>
           </div>
-          <Switch checked={isPumpOn} onCheckedChange={(checked) => { if (mode === "MANUAL") onPowerToggle(checked) }} disabled={mode === "AUTO"} className="data-[state=checked]:bg-primary scale-125" />
+          <Switch 
+            checked={isPumpOn} 
+            onCheckedChange={(checked) => { if (mode === "MANUAL") onPowerToggle(checked) }} 
+            disabled={mode === "AUTO"} 
+            className="scale-125" 
+          />
         </div>
       </section>
 
-      {/* Pump Log*/}
-      <section className="bg-card rounded-3xl p-5 shadow-sm border border-border">
-        <h2 className="font-semibold text-foreground mb-4 text-sm tracking-wide flex items-center gap-2">
-          <History className="w-4 h-4 text-primary" /> Pump Activity Log
-        </h2>
-        <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
+      {/* pump log */}
+      {/* recent activity log */}
+      <section className="bg-card rounded-3xl p-5 shadow-sm border border-border/50">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold text-foreground text-sm tracking-wide flex items-center gap-2">
+            <History className="w-4 h-4 text-primary" /> Recent Activity
+          </h2>
+          {/* tab log btn */}
+          <button 
+            onClick={onNavigateToLogs}
+            className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1 bg-primary/10 px-2 py-1 rounded-md transition-colors hover:bg-primary/20"
+          >
+            See All
+          </button>
+        </div>
+
+        <div className="space-y-3">
           {pumpLogs && pumpLogs.length > 0 ? (
-            [...pumpLogs].sort((a, b) => {
-              const timeA = new Date(a.timestamp || a.createdAt || a.created_at || 0).getTime();
-              const timeB = new Date(b.timestamp || b.createdAt || b.created_at || 0).getTime();
-              return timeB - timeA; 
-            }).map((log: any, index: number) => {
+            [...pumpLogs]
+              .sort((a, b) => {
+                const timeA = new Date(a.timestamp || a.createdAt || a.created_at || 0).getTime();
+                const timeB = new Date(b.timestamp || b.createdAt || b.created_at || 0).getTime();
+                return timeB - timeA; 
+              })
+              .slice(0, 3) 
+              .map((log: any, index: number) => {
+                let actionText = log.action;
+                if (actionText === 'ON') actionText = 'Pump turned ON';
+                if (actionText === 'OFF') actionText = 'Pump turned OFF';
+                if (!actionText) actionText = log.isTurnOn ? 'Pump turned ON' : 'Pump turned OFF';
 
-              let actionText = log.action;
-              if (actionText === 'ON') actionText = 'Pump turned ON';
-              if (actionText === 'OFF') actionText = 'Pump turned OFF';
-              if (!actionText) actionText = log.isTurnOn ? 'Pump turned ON' : 'Pump turned OFF';
+                const logMode = log.mode || (log.isAuto ? 'AUTO' : 'MANUAL') || 'MANUAL';
+                const isSuccess = log.status === 'Success' || log.status === 'SUCCESS' || (log.success !== false && log.status !== 'Failed');
+                const timeString = log.timestamp || log.createdAt || log.created_at;
 
-              const logMode = log.mode || (log.isAuto ? 'AUTO' : 'MANUAL') || 'MANUAL';
-              const isPending = log.status === 'Pending';
-              const isSuccess = log.status === 'Success' || (log.success !== false && log.status !== 'Failed' && !isPending);
-              const timeString = log.timestamp || log.createdAt || log.created_at;
-
-              return (
-                <div key={index} className="flex flex-col p-3 bg-muted/50 rounded-2xl border border-border/50 text-xs transition-colors hover:bg-muted">
-                  <div className="flex justify-between items-center mb-1.5">
-                    <span className="font-semibold flex items-center gap-1.5 text-foreground">
-                      <span className={cn("w-2 h-2 rounded-full", 
-                        actionText.includes('ON') ? "bg-primary" : 
-                        actionText.includes('OFF') ? "bg-muted-foreground" : "bg-blue-500"
-                      )} />
-                      {actionText}
-                    </span>
-                    <span className="text-muted-foreground font-medium">
-                      {timeString ? new Date(timeString).toLocaleString('en-US') : 'Unknown time'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground">
-                      Mode: <span className="font-medium text-foreground">{logMode}</span>
-                    </span>
-                    {isPending ? (
-                      <span className="font-medium px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-600 flex items-center gap-1">
-                        <Loader2 className="w-3 h-3 animate-spin" /> Pending
+                return (
+                  <div key={index} className="flex flex-col p-3 bg-muted/50 rounded-2xl border border-border/50 text-xs transition-colors hover:bg-muted">
+                    <div className="flex justify-between items-center mb-1.5">
+                      <span className="font-semibold flex items-center gap-1.5 text-foreground">
+                        <span className={cn("w-2 h-2 rounded-full", 
+                          actionText.includes('ON') ? "bg-primary" : "bg-muted-foreground"
+                        )} />
+                        {actionText}
                       </span>
-                    ) : (
-                      <span className={cn("font-medium px-2 py-0.5 rounded-full", 
+                      <span className="text-muted-foreground font-medium">
+                        {timeString ? new Date(timeString).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'Unknown time'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">
+                        Mode: <span className="font-medium text-foreground">{logMode}</span>
+                      </span>
+                      <span className={cn("font-medium px-2 py-0.5 rounded-full text-[10px]", 
                         isSuccess ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"
                       )}>
                         {isSuccess ? 'Success' : 'Failed'}
                       </span>
-                    )}
+                    </div>
                   </div>
-                </div>
-              )
-            })
+                )
+              })
           ) : (
             <div className="flex flex-col items-center justify-center py-6 text-center">
               <History className="w-8 h-8 text-muted-foreground/30 mb-2" />
@@ -132,13 +165,19 @@ export function DashboardTab({ sensorData, mode, onModeSwitch, isPumpOn, onPower
       <section className="bg-card rounded-3xl p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-medium text-muted-foreground">Device Status</h2>
-          {!allSensorsConnected && <button onClick={onAddSensor} className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center"><Plus className="w-4 h-4 text-primary" /></button>}
+          {!allSensorsConnected && (
+            <button onClick={onAddSensor} className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+              <Plus className="w-4 h-4 text-primary" />
+            </button>
+          )}
         </div>
         <div className="space-y-3">
-          {sensors.length === 0 ? (
+          {sensors.filter((s: Sensor) => !s.type.toLowerCase().includes("water")).length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">No sensors added yet</p>
           ) : (
-            sensors.map((sensor: Sensor) => (
+            sensors
+              .filter((s: Sensor) => !s.type.toLowerCase().includes("water"))
+              .map((sensor: Sensor) => (
               <div 
                 key={sensor.id} 
                 className={cn(
@@ -152,7 +191,9 @@ export function DashboardTab({ sensorData, mode, onModeSwitch, isPumpOn, onPower
                     {sensor.type === "Moisture" && <Droplets className="w-4 h-4 text-primary" />}
                     {sensor.type === "Light" && <Sun className="w-4 h-4 text-primary" />}
                   </div>
-                  <div><span className="text-foreground text-sm">{sensor.type} Sensor</span><p className="text-xs text-muted-foreground">{sensor.macId}</p></div>
+                  <div>
+                    <span className="text-foreground text-sm font-medium">{sensor.type} Sensor</span>
+                  </div>
                 </div>
                 <div className="flex items-center gap-3">
                   {sensor.connectionStatus === "connecting" ? (
@@ -161,11 +202,19 @@ export function DashboardTab({ sensorData, mode, onModeSwitch, isPumpOn, onPower
                       <span className="text-sm font-medium text-primary">Pending...</span>
                     </div>
                   ) : sensor.connectionStatus === "failed" ? (
-                    <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-destructive" /><span className="text-sm font-medium text-destructive">Failed</span></div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-destructive" />
+                      <span className="text-sm font-medium text-destructive">Failed</span>
+                    </div>
                   ) : (
-                    <div className="flex items-center gap-2"><span className={cn("w-2 h-2 rounded-full", sensor.status === "Online" ? "bg-green-500" : "bg-destructive")} /><span className={cn("text-sm font-medium", sensor.status === "Online" ? "text-green-600" : "text-destructive")}>{sensor.status}</span></div>
+                    <div className="flex items-center gap-2">
+                      <span className={cn("w-2 h-2 rounded-full", sensor.status === "Online" ? "bg-green-500" : "bg-destructive")} />
+                      <span className={cn("text-sm font-medium", sensor.status === "Online" ? "text-green-600" : "text-destructive")}>{sensor.status}</span>
+                    </div>
                   )}
-                  <button onClick={() => onDeleteSensor(sensor)} className="p-1.5 rounded-lg hover:bg-destructive/10"><Trash2 className="w-4 h-4 text-destructive" /></button>
+                  <button onClick={() => onDeleteSensor(sensor)} className="p-1.5 rounded-lg hover:bg-destructive/10">
+                    <Trash2 className="w-4 h-4 text-destructive" />
+                  </button>
                 </div>
               </div>
             ))
