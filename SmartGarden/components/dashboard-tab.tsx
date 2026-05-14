@@ -27,6 +27,7 @@ export function DashboardTab({
 
   const isTempCritical = hasTemp && sensorData.temp > thresholds.maxTemp
   const isMoistureCritical = hasMoisture && sensorData.moisture < thresholds.moistureThreshold
+  const isLightCritical = hasLight && sensorData.light > thresholds.maxLight
 
   return (
     <div className="space-y-6">
@@ -41,7 +42,7 @@ export function DashboardTab({
             </div>
           )}
           {hasTemp && <SensorCard icon={Thermometer} label="Temperature" value={sensorData.temp} unit="°C" onClick={() => onSensorClick("temp")} isCritical={isTempCritical} />}
-          {hasLight && <SensorCard icon={Sun} label="Light Intensity" value={sensorData.light} unit="%" onClick={() => onSensorClick("light")} />}
+          {hasLight && <SensorCard icon={Sun} label="Light Intensity" value={sensorData.light} unit="lx" onClick={() => onSensorClick("light")} isCritical={isLightCritical} />}
           {hasMoisture && (
             <div className={cn(hasTemp && hasLight ? "col-span-2" : hasTemp || hasLight ? "" : "col-span-2")}>
               <SensorCard icon={Droplets} label="Soil Moisture" value={sensorData.moisture} unit="%" variant="primary" onClick={() => onSensorClick("moisture")} isCritical={isMoistureCritical} />
