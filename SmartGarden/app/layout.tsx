@@ -1,26 +1,24 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"] });
+const jakarta = Plus_Jakarta_Sans({ 
+  subsets: ["latin"],
+  weight: ['400', '500', '600', '700', '800']
+});
 
 export const metadata: Metadata = {
   title: "Smart Garden",
-  description: "IoT Pump Management System for smart agriculture and gardening",
-  icons: {
-    icon: '/logo.png', 
-    apple: '/logo.png', 
-  },
+  description: "IoT Pump Management System for smart agriculture",
+  icons: { icon: '/logo.png', apple: '/logo.png' },
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode; }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.className} font-sans antialiased`} suppressHydrationWarning>
+      <body className={`${jakarta.className} antialiased`} suppressHydrationWarning>
         {children}
       </body>
     </html>
