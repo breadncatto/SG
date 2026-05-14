@@ -34,7 +34,7 @@ export function SmartGarden() {
   const [pumpLogs, setPumpLogs] = useState<any[]>([]) 
   
   const [isLoadingPumps, setIsLoadingPumps] = useState(false)
-  const [activeTab, setActiveTab] = useState<"home" | "analytics" | "settings">("home")
+  const [activeTab, setActiveTab] = useState<"home" | "analytics" | "logs" | "settings">("home")
   const [isPumpDropdownOpen, setIsPumpDropdownOpen] = useState(false)
   const [pendingMode, setPendingMode] = useState<"AUTO" | "MANUAL">("AUTO");
   const [mode, setMode] = useState<"AUTO" | "MANUAL">("MANUAL")
@@ -67,6 +67,50 @@ export function SmartGarden() {
   const sensorData = selectedPump?.sensorData || { temp: 0, moisture: 0, light: 0, waterVolume: 0 }
   const currentThresholds = selectedPump?.thresholds || DEFAULT_THRESHOLDS
   const unreadAlerts = alertsList.filter((a) => a.unread).length
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const markAsRead = async (noti: any) => {
+    if (noti.read) return; 
+    
+    try {
+      await api.put(`/api/alerts/isRead/${noti.id}`);
+      setNotifications(prev => 
+        prev.map(n => n.id === noti.id ? { ...n, read: true } : n)
+      );
+    } catch (error) {
+      console.error("Failed to mark as read:", error);
+    }
+  };
+
+
+  //IN-APP NOTIFICATION
+  // const fetchNotifications = async () => {
+  //   try {
+  //     const res = await api.get("/api/alert");
+  //     const sortedData = res.data
+  //       .map((noti: any) => ({
+  //         ...noti,
+  //         createdAt: (noti.createdAt && !noti.createdAt.endsWith('Z')) ? `${noti.createdAt}Z` : noti.createdAt
+  //       }))
+  //       .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        
+  //     setNotifications(sortedData);
+  //   } catch (error) {
+  //     console.error("Failed to fetch notifications:", error);
+  //   }
+  // };
+
+  // const markAsRead = async (noti: any) => {
+  //   if (noti.read) return;
+  //   try {
+  //     await api.put(`/api/alerts/isRead/${noti.id}`);
+  //     setNotifications(prev => 
+  //       prev.map(n => n.id === noti.id ? { ...n, read: true } : n)
+  //     );
+  //   } catch (error) {
+  //     console.error("Failed to mark as read:", error);
+  //   }
+  // };
 
   const [pumpForm, setPumpForm] = useState({
     name: "",
@@ -142,7 +186,7 @@ export function SmartGarden() {
         userId: currentUser.id || currentUser.userId,
         brokerName: "system",
         feed: uniqueFeed,
-        password: "DADN-hk2-2026", 
+        password: "DADN-hk2]2026", 
         address: "ssl://205dd780c5cd4cd6af5c18efd1914a37.s1.eu.hivemq.cloud:8883"
       };
       
@@ -242,6 +286,19 @@ export function SmartGarden() {
     const fetchPumpDetails = async (pumpId: number) => {
       setPumpLogs([]);
       try {
+        const pumpRes = await api.get(`/api/pump/${pumpId}`);
+        if (pumpRes.data) {
+          const currentStatus = String(pumpRes.data.pumpStatus || "").trim().toUpperCase();
+          setIsPumpOn(currentStatus === 'ON');
+        if (pumpRes.data.mode) {
+             const currentMode = String(pumpRes.data.mode).trim().toUpperCase();
+             setMode(currentMode as "AUTO" | "MANUAL");
+          }
+        } 
+      }catch (err) {
+        console.error("Failed to sync pump state from server:", err);
+      }
+      try{
         const deviceRes = await api.get(`/api/device/by-pump?pumpId=${pumpId}`);
         const devices = deviceRes.data;
         
@@ -300,13 +357,21 @@ export function SmartGarden() {
     if (selectedPump && currentUser) {
       const userId = currentUser.id || currentUser.userId;
       fetchPumpDetails(selectedPump.id);
-      fetchUserAlerts(userId); 
+      fetchUserAlerts(userId);
+      //fetchNotifications();
 
       const dbRef = ref(rtdb, `updates/${userId}`);
       
       onValue(dbRef, (snapshot) => {
         const newData = snapshot.val();
+        console.log("Data for Pump:", selectedPump.id, "is", newData.value);
         if (newData && newData.type) {
+
+          if (newData.type === "PUMP_STATUS") {
+             const isOn = newData.value === "ON";
+             setIsPumpOn(isOn);
+             return;
+          }
 
           setPumps(prevPumps => prevPumps.map(pump => {
             if (pump.id !== selectedPump.id) return pump;
@@ -362,7 +427,7 @@ export function SmartGarden() {
         off(dbRef);
       };
     }
-  }, [selectedPump?.id, currentUser]);
+  }, [selectedPump ? selectedPump.id : null, currentUser]);
 
   const handleUpdateThresholds = async (newThresholds: any) => {
     if (!selectedPump || !currentUser) return
@@ -382,67 +447,46 @@ export function SmartGarden() {
   const handleModeSwitch = () => { if (mode === "AUTO") setShowModeConfirm(true); else switchMode("AUTO") }
   const switchMode = async (newMode: "AUTO" | "MANUAL") => { 
     setShowModeConfirm(false); 
-
-    const logId = Date.now();
-    const pendingLog = {
-      id: logId, 
-      action: newMode === "AUTO" ? "Switched to AUTO" : "Switched to MANUAL",
-      mode: newMode,
-      status: 'Pending', 
-      timestamp: new Date().toISOString()
-    };
-    
-    setPumpLogs(prev => [pendingLog, ...prev]);
-
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
       setMode(newMode); 
       showToast(`Successfully switched to ${newMode} mode`, "success");
-      
-      setPumpLogs(prev => prev.map(log => 
-        log.id === logId ? { ...log, status: 'Success' } : log
-      ));
-
+      if (newMode === "MANUAL" && selectedPump) {
+        try {
+          const pumpRes = await api.get(`/api/pump/${selectedPump.id}`); 
+          const isCurrentlyOn = pumpRes.data.status === 'ON'; 
+          setIsPumpOn(isCurrentlyOn); 
+        } catch (err) {
+          console.error("Error: Could not sync current pump status from server", err);
+        }
+      }
     } catch (error) {
       showToast(`Failed to switch to ${newMode} mode`, "error");
-      setPumpLogs(prev => prev.map(log => 
-        log.id === logId ? { ...log, status: 'Failed' } : log
-      ));
     }
-  }
+  };
 
   const handlePowerToggle = (newState: boolean) => { setPendingPowerState(newState); setShowPowerConfirm(true) }
   const confirmPowerToggle = async () => {
     if (!selectedPump) return;
     setShowPowerConfirm(false); 
-    const logId = Date.now();
-    const pendingLog = {
-      id: logId,
-      action: pendingPowerState ? "Pump turned ON" : "Pump turned OFF",
-      mode: 'MANUAL', 
-      status: 'Pending',
-      timestamp: new Date().toISOString()
-    };
-    
-    setPumpLogs(prev => [pendingLog, ...prev]);
 
     try {
-      await api.post(`/api/pump/manual?pumpId=${selectedPump.id}&onCommand=${pendingPowerState}`)
+      await api.post(`/api/pump/manual?pumpId=${selectedPump.id}&onCommand=${pendingPowerState}`);
+      
       setIsPumpOn(pendingPowerState); 
-      showToast(`Successfully turned ${pendingPowerState ? "ON" : "OFF"} the pump`, "success");
+      showToast(`Pump successfully turned ${pendingPowerState ? "ON" : "OFF"}`, "success");
 
-      setPumpLogs(prev => prev.map(log => 
-        log.id === logId ? { ...log, status: 'Success' } : log
-      ));
-
+      try {
+        let logRes = await api.get(`/api/pumpLog/pump/${selectedPump.id}`).catch(() => api.get(`/api/pump-log/pump/${selectedPump.id}`));
+        if (logRes && logRes.data) {
+           setPumpLogs(logRes.data);
+        }
+      } catch (logErr) {
+         console.error("Failed to refresh activity logs");
+      }
     } catch (error) { 
-      showToast(`Failed to turn ${pendingPowerState ? "ON" : "OFF"} the pump`, "error"); 
-      setPumpLogs(prev => prev.map(log => 
-        log.id === logId ? { ...log, status: 'Failed' } : log
-      ));
+      showToast(`Failed to execute pump action`, "error"); 
     }
-  }
+  };
 
   const handleAddPump = async () => {
     if (!newPumpName.trim()) return;
@@ -606,15 +650,93 @@ export function SmartGarden() {
     )
   }
 
+  const groupedLogs = pumpLogs.reduce((groups: any, log: any) => {
+    const date = new Date(log.createdAt || log.timestamp);
+    const dateStr = date.toLocaleDateString('en-GB'); 
+    
+    if (!groups[dateStr]) {
+      groups[dateStr] = [];
+    }
+    groups[dateStr].push(log);
+    return groups;
+  }, {});
+
+  const sortedDates = Object.keys(groupedLogs).sort((a, b) => {
+    const [dayA, monthA, yearA] = a.split('/');
+    const [dayB, monthB, yearB] = b.split('/');
+    return new Date(Number(yearB), Number(monthB) - 1, Number(dayB)).getTime() - 
+           new Date(Number(yearA), Number(monthA) - 1, Number(dayA)).getTime();
+  });
+  // ---------------------------------------------------
+
   return (
-    <div className="max-w-md mx-auto min-h-screen relative overflow-hidden bg-background flex flex-col">
+    <div className="max-w-md mx-auto h-[100dvh] relative overflow-hidden bg-background flex flex-col">
       {/* header + topbar */}
       <header className="px-5 pt-6 pb-4 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
           <div><p className="text-muted-foreground text-sm">Hello,</p><h1 className="text-xl font-semibold text-foreground">{currentUser?.fullName || "Farm Manager"}</h1></div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowAlerts(true)} className="relative p-2 rounded-full bg-card shadow-sm"><Bell className="w-5 h-5 text-foreground" />{unreadAlerts > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 bg-destructive text-xs rounded-full flex items-center justify-center font-medium text-white">{unreadAlerts}</span>}</button>
-            <button onClick={() => { setShowProfile(true); setIsEditingProfile(false); }} className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-semibold text-sm">{currentUser?.fullName?.charAt(0).toUpperCase() || "FM"}</button>
+            {/* bell noti */}
+            <div className="relative">
+              <button 
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="relative p-2 rounded-full bg-card shadow-sm hover:bg-muted transition-colors"
+              >
+                <Bell className="w-5 h-5 text-foreground" />
+                {notifications.some(n => !n.read) && (
+                  <span className="absolute top-1.5 right-2 w-2.5 h-2.5 bg-destructive rounded-full border-2 border-background" />
+                )}
+              </button>
+
+              {showNotifications && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
+                  <div className="absolute right-0 mt-3 w-80 sm:w-96 bg-card border border-border shadow-2xl rounded-2xl overflow-hidden z-50 animate-in fade-in zoom-in duration-200">
+                    <div className="p-4 border-b border-border flex justify-between items-center bg-muted/30">
+                      <h3 className="font-semibold text-sm">Notifications</h3>
+                      <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold uppercase">
+                        {notifications.filter(n => !n.read).length} Unread
+                      </span>
+                    </div>
+
+                    <div className="max-h-[400px] overflow-y-auto p-2 space-y-1">
+                      {notifications.length === 0 ? (
+                        <div className="p-8 text-center text-xs text-muted-foreground">No alerts recorded.</div>
+                      ) : (
+                        notifications.map((noti) => (
+                          <div 
+                            key={noti.id}
+                            onClick={() => markAsRead(noti)}
+                            className={cn(
+                              "p-3 rounded-xl transition-all cursor-pointer flex gap-3 items-start",
+                              !noti.read ? "bg-primary/5 hover:bg-primary/10" : "opacity-60 hover:opacity-100"
+                            )}
+                          >
+                            <div className={cn("p-2 rounded-lg mt-0.5", !noti.read ? "bg-background" : "bg-muted")}>
+                              {noti.type === 'TEMPERATURE' && <span className="text-orange-500 font-bold text-xs">T</span>}
+                              {noti.type === 'MOISTURE' && <span className="text-blue-500 font-bold text-xs">M</span>}
+                              {noti.type === 'LIGHT' && <span className="text-yellow-500 font-bold text-xs">L</span>}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className={cn("text-xs font-bold", !noti.read ? "text-foreground" : "text-muted-foreground")}>
+                                {noti.type} ALERT
+                              </p>
+                              <p className="text-xs mt-1 text-muted-foreground leading-relaxed">{noti.message}</p>
+                            </div>
+                            {!noti.read && <div className="w-2 h-2 rounded-full bg-primary mt-2" />}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* profile button */}
+            <button onClick={() => { setShowProfile(true); setIsEditingProfile(false); }} className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-semibold text-sm">
+              {currentUser?.fullName?.charAt(0).toUpperCase() || "FM"}
+            </button>
           </div>
         </div>
         
@@ -645,15 +767,130 @@ export function SmartGarden() {
 
       {/* view */}
       <main className="flex-1 overflow-y-auto px-5 pb-24">
-        {activeTab === "home" && (hasPumps && selectedPump ? <DashboardTab sensorData={sensorData} mode={mode} onModeSwitch={(targetMode: "AUTO" | "MANUAL") => { setPendingMode(targetMode); setShowModeConfirm(true); }} isPumpOn={isPumpOn} onPowerToggle={(s) => {setPendingPowerState(s); setShowPowerConfirm(true)}} onSensorClick={(s) => {setAnalyticsSensor(s); setActiveTab("analytics")}} thresholds={currentThresholds} sensors={selectedPump.sensors} onAddSensor={() => setShowAddSensor(true)} onDeleteSensor={handleDeleteSensor} allSensorsConnected={allSensorsConnected} pumpLogs={pumpLogs} /> : <EmptyState onAddPump={() => setShowAddPump(true)} />)}   
+        {activeTab === "home" && (
+  hasPumps && selectedPump ? (
+    <DashboardTab 
+      sensorData={sensorData} 
+      mode={mode} 
+      onModeSwitch={(targetMode: "AUTO" | "MANUAL") => { 
+        setPendingMode(targetMode); 
+        setShowModeConfirm(true); 
+      }} 
+      isPumpOn={isPumpOn} 
+      onPowerToggle={(s: boolean) => {
+        setPendingPowerState(s); 
+        setShowPowerConfirm(true);
+      }} 
+      onSensorClick={(s: SensorType) => {
+        setAnalyticsSensor(s); 
+        setActiveTab("analytics");
+      }} 
+      thresholds={currentThresholds} 
+      sensors={selectedPump.sensors} 
+      onAddSensor={() => setShowAddSensor(true)} 
+      onDeleteSensor={handleDeleteSensor} 
+      allSensorsConnected={allSensorsConnected} 
+      pumpLogs={pumpLogs} 
+      onNavigateToLogs={() => setActiveTab("logs")} 
+    />
+  ) : (
+    <EmptyState onAddPump={() => setShowAddPump(true)} />
+  )
+)}
         {activeTab === "analytics" && (hasPumps ? <AnalyticsTab sensors={selectedPump?.sensors || []} selectedSensor={analyticsSensor} setSelectedSensor={setAnalyticsSensor} thresholds={currentThresholds} /> : <EmptyStateAnalytics />)}    
         {activeTab === "settings" && (hasPumps ? <SettingsTab thresholds={currentThresholds} onSaveThresholds={handleUpdateThresholds} onAddPump={() => setShowAddPump(true)} onDeletePump={handleDeletePump} /> : <EmptyStateSettings onAddPump={() => setShowAddPump(true)} />)}
+        {activeTab === "logs" && (
+  <div className="space-y-6">
+    {/* tab log header */}
+    <div className="flex items-center justify-between mb-2">
+      <h2 className="text-lg font-semibold flex items-center gap-2">
+        <Droplets className="w-5 h-5 text-primary" /> Irrigation History
+      </h2>
+      <span className="text-xs bg-primary/10 text-primary px-3 py-1 rounded-full font-medium">
+        {pumpLogs.length} Records
+      </span>
+    </div>
+
+    {/* log list */}
+    <div className="space-y-6">
+      {sortedDates.length > 0 ? (
+        sortedDates.map((date) => (
+          <div key={date} className="space-y-3">
+            {/* stickey header */}
+            <div className="sticky top-0 bg-background/95 backdrop-blur-md z-10 py-2 border-b border-border/50 -mx-5 px-5">
+              <h3 className="text-sm font-bold text-muted-foreground">{date}</h3>
+            </div>
+            
+            {/* in-day log */}
+            <div className="space-y-3">
+              {groupedLogs[date].map((log: any, index: number) => (
+                <div key={log.id || index} className="bg-card p-4 rounded-2xl shadow-sm border border-border/50 flex flex-col gap-3">
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="flex-1">
+                      <p className="font-semibold text-sm leading-tight text-foreground">
+                        Pump turned {log.action === 'ON' ? 'ON' : 'OFF'}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {new Date(log.createdAt || log.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                      </p>
+                    </div>
+                    <span className={cn(
+                      "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase shrink-0 whitespace-nowrap",
+                      log.status === 'SUCCESS' ? "bg-green-500/10 text-green-500" : "bg-destructive/10 text-destructive"
+                    )}>
+                      {log.status || 'SUCCESS'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-[7px] bg-muted/50 p-2.5 flex flex-col justify-center">
+                      <p className="text-[10px] text-muted-foreground uppercase font-medium">Mode</p>
+                      <p className="text-sm font-semibold text-foreground">{log.mode || 'MANUAL'}</p>
+                    </div>
+                    <div className="rounded-[7px] bg-primary/5 p-2.5 border border-primary/10 flex flex-col justify-center">
+                      <p className="text-[10px] text-primary uppercase font-bold">Water Volume</p>
+                      <p className="text-sm font-bold text-primary">
+                        {log.waterVolume ? `${log.waterVolume.toFixed(2)} L` : '0.00 L'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))
+      ) : (
+        <div className="text-center py-16 bg-card rounded-3xl border border-dashed flex flex-col items-center justify-center">
+          <Droplets className="w-12 h-12 text-muted-foreground/20 mb-4" />
+          <p className="text-sm text-muted-foreground font-medium">No irrigation logs found.</p>
+        </div>
+      )}
+    </div>
+  </div>
+)}
       </main>
       
       {/* nav bar */}
-      <nav className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-foreground px-6 py-3 rounded-full shadow-lg z-40">
-        {[{ id: "home" as const, icon: Home, label: "Home" }, { id: "analytics" as const, icon: BarChart3, label: "Stats" }, { id: "settings" as const, icon: Settings, label: "Config" }].map((tab) => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={cn("flex items-center gap-2 px-4 py-2 rounded-full transition-all", activeTab === tab.id ? "bg-primary text-primary-foreground" : "text-muted hover:text-card")}><tab.icon className="w-5 h-5" />{activeTab === tab.id && <span className="text-sm font-medium">{tab.label}</span>}</button>
+      <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-foreground/95 backdrop-blur-xl px-2 py-2 rounded-[2rem] shadow-[0_20px_40px_rgb(0,0,0,0.15)] z-40 border border-white/10">
+        {[
+          { id: "home" as const, icon: Home, label: "Home" },
+          { id: "analytics" as const, icon: BarChart3, label: "Stats" },
+          { id: "logs" as const, icon: Droplets, label: "Logs" },
+          { id: "settings" as const, icon: Settings, label: "Config" }
+        ].map((tab) => (
+          <button 
+            key={tab.id} 
+            onClick={() => setActiveTab(tab.id)} 
+            className={cn(
+              "flex items-center gap-2 px-5 py-3 rounded-full transition-all duration-300", 
+              activeTab === tab.id 
+                ? "bg-primary text-primary-foreground shadow-sm" 
+                : "text-muted hover:text-card hover:bg-white/10"
+            )}
+          >
+            <tab.icon className={cn("w-5 h-5", activeTab === tab.id ? "scale-110" : "scale-100")} />
+            {activeTab === tab.id && <span className="text-[13px] font-bold tracking-wide">{tab.label}</span>}
+          </button>
         ))}
       </nav>
 
@@ -678,7 +915,6 @@ export function SmartGarden() {
   if (!open) { 
     setAddError(null); 
     setIsAddingPump(false);
-    // Tùy chọn: Reset form khi đóng modal
     setPumpForm({
       name: "", temperatureMax: 35.0, temperatureMin: 15.0, 
       lightIntensityMax: 1000.0, moistureThreshold: 60.0, 
@@ -701,7 +937,7 @@ export function SmartGarden() {
     )}
     
     <div className="space-y-4">
-      {/* Ô nhập tên máy bơm (Chiếm toàn bộ chiều rộng) */}
+      {/* Pump name */}
       <div>
         <label className="text-sm font-medium block mb-2">Pump Name</label>
         <Input 
@@ -713,7 +949,7 @@ export function SmartGarden() {
         />
       </div>
 
-      {/* Khu vực cấu hình 7 thông số (Chia làm 2 cột cho gọn) */}
+      {}
       <div className="grid grid-cols-2 gap-3 p-3 bg-muted/30 rounded-xl border border-border/50">
         <div className="col-span-2">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
