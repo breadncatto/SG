@@ -2,7 +2,7 @@ import { getToken } from "firebase/messaging";
 import { messaging } from "./firebase";
 import { onMessage } from "firebase/messaging";
 
-const VAPID_KEY = "BHKo93iOZGtDrtZbARlskLo3-09Y3MNOiQPoAZ5aGTvhr0L4tQOu1YUwK6Gl2YJVDDqL9AKrSvwRo9nUfkAyE8w";
+const VAPID_KEY = "BIsfJGDgqWTSE8nG2WIlRbS5kuPEDluKJkUMuYtREPadi7XkgIGKZu2kkziM2OepEKUBfWPCPypZ6Q8PulOguxc";
 
 export const getDeviceId = () => {
   if (typeof window === "undefined") return null;
@@ -24,7 +24,16 @@ export const requestPushNotificationPermission = async () => {
         const msg = await messaging();
         if (!msg) return null;
 
-        const token = await getToken(msg, { vapidKey: VAPID_KEY });
+        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+
+        await navigator.serviceWorker.ready;
+
+        const token = await getToken(msg, { 
+          vapidKey: VAPID_KEY,
+          serviceWorkerRegistration: registration 
+        });
+        
+        console.log("FCM token:", token);
         return token;
       }
     }
@@ -42,7 +51,7 @@ export const setupForegroundMessageListener = async () => {
 
     onMessage(msg, (payload) => {
       console.log("Foreground notification received:", payload);
-      alert(`🔔 CẢNH BÁO TỪ IOT:\n${payload.notification?.title}\n${payload.notification?.body}`);
+      alert(`CẢNH BÁO TỪ IOT:\n${payload.notification?.title}\n${payload.notification?.body}`);
     });
   } catch (err) {
     console.log("Lỗi cài đặt Foreground listener:", err);
