@@ -151,7 +151,7 @@ export function SmartGarden() {
           try {
             await api.post('/api/notification/register-device', {
               userId: validUserId,
-              phoneId: deviceId, 
+              phoneUUID: deviceId, 
               token: fcmToken    
             });
             console.log("Device successfully registered for push notifications!");
@@ -191,7 +191,7 @@ export function SmartGarden() {
       };
       
       const connRes = await api.post('/api/connection', connPayload);
-      const newConnectionId = connRes.data.connectionId; 
+      const newConnectionId = connRes.data.id || connRes.data.connectionId;
 
       if (!newConnectionId) {
          showToast("Error: Could not retrieve Connection ID from server.", "error");
@@ -202,6 +202,7 @@ export function SmartGarden() {
          name: pumpForm.name,
          connectionId: newConnectionId, 
          userId: currentUser.id || currentUser.userId,
+         mode: "AUTO",
          temperatureMax: pumpForm.temperatureMax,
          temperatureMin: pumpForm.temperatureMin,
          lightIntensityMax: pumpForm.lightIntensityMax,
@@ -243,6 +244,7 @@ export function SmartGarden() {
         mac: `Connection ID: ${p.connectionId || "N/A"}`,
         connectionId: p.connectionId,
         userId: p.userId,
+        mode: p.mode || "MANUAL", 
         sensors: [],
         sensorData: { temp: 0, moisture: 0, light: 0, waterVolume: 0 },
         thresholds: { 
@@ -268,10 +270,17 @@ export function SmartGarden() {
      try {
        const res = await api.get(`/api/alert/user/${userId}`)
        if (res.data) {
-         const formattedAlerts = res.data.map((a: any) => ({
-           id: a.id || a.alertId, message: a.message || "Alert received",
-           time: new Date(a.createdAt || a.created_at).toLocaleString(), unread: !a.isRead
-         }))
+         const formattedAlerts = res.data.map((a: any) => {
+           const rawTime = a.createdAt || a.created_at;
+           const fixedTime = rawTime && !rawTime.endsWith('Z') ? `${rawTime}Z` : rawTime;
+           
+           return {
+             id: a.id || a.alertId, 
+             message: a.message || "Alert received",
+             time: new Date(fixedTime || 0).toLocaleString(), 
+             unread: !a.isRead
+           };
+         })
          formattedAlerts.sort((a: any, b: any) => new Date(b.time).getTime() - new Date(a.time).getTime())
          setAlertsList(formattedAlerts)
        }
@@ -433,9 +442,18 @@ export function SmartGarden() {
     if (!selectedPump || !currentUser) return
     try {
       await api.put('/api/pump', {
-        id: selectedPump.id, name: selectedPump.name, connectionId: selectedPump.connectionId, userId: currentUser.id || currentUser.userId,
-        temperatureMax: newThresholds.maxTemp, temperatureMin: newThresholds.minTemp, lightIntensityMax: newThresholds.maxLight, moistureThreshold: newThresholds.moistureThreshold,
-        fieldCapacity: newThresholds.fieldCapacity, rootDepth: newThresholds.rootDepth, area: newThresholds.area 
+        id: selectedPump.id, 
+        name: selectedPump.name, 
+        connectionId: selectedPump.connectionId, 
+        userId: currentUser.id || currentUser.userId,
+        mode: selectedPump.mode || "MANUAL", 
+        temperatureMax: newThresholds.maxTemp, 
+        temperatureMin: newThresholds.minTemp, 
+        lightIntensityMax: newThresholds.maxLight, 
+        moistureThreshold: newThresholds.moistureThreshold,
+        fieldCapacity: newThresholds.fieldCapacity, 
+        rootDepth: newThresholds.rootDepth, 
+        area: newThresholds.area 
       });
       const updatedPump = { ...selectedPump, thresholds: newThresholds }
       setPumps(prev => prev.map(p => p.id === selectedPump.id ? updatedPump : p))
@@ -447,10 +465,35 @@ export function SmartGarden() {
   const handleModeSwitch = () => { if (mode === "AUTO") setShowModeConfirm(true); else switchMode("AUTO") }
   const switchMode = async (newMode: "AUTO" | "MANUAL") => { 
     setShowModeConfirm(false); 
+    if (!selectedPump || !currentUser) return;
+
     try {
+      const currentThresholds = selectedPump.thresholds;
+
+      await api.put('/api/pump', {
+        id: selectedPump.id, 
+        name: selectedPump.name, 
+        connectionId: selectedPump.connectionId, 
+        userId: currentUser.id || currentUser.userId,
+        mode: newMode, 
+        temperatureMax: currentThresholds.maxTemp, 
+        temperatureMin: currentThresholds.minTemp, 
+        lightIntensityMax: currentThresholds.maxLight, 
+        moistureThreshold: currentThresholds.moistureThreshold,
+        fieldCapacity: currentThresholds.fieldCapacity, 
+        rootDepth: currentThresholds.rootDepth, 
+        area: currentThresholds.area 
+      });
+
       setMode(newMode); 
+
+      const updatedPump = { ...selectedPump, mode: newMode };
+      setPumps(prev => prev.map(p => p.id === selectedPump.id ? updatedPump : p));
+      setSelectedPump(updatedPump);
+
       showToast(`Successfully switched to ${newMode} mode`, "success");
-      if (newMode === "MANUAL" && selectedPump) {
+      
+      if (newMode === "MANUAL") {
         try {
           const pumpRes = await api.get(`/api/pump/${selectedPump.id}`); 
           const isCurrentlyOn = pumpRes.data.status === 'ON'; 
@@ -501,6 +544,7 @@ export function SmartGarden() {
         name: newPumpName.trim(), 
         connectionId: userConnectionId, 
         userId: currentUser.id || currentUser.userId,
+        mode: "AUTO",
         temperatureMax: 35, temperatureMin: 15, lightIntensityMax: 90, moistureThreshold: 40, fieldCapacity: 1, rootDepth: 1, area: 1 
       })
       fetchUserPumps(currentUser.id || currentUser.userId);
@@ -651,7 +695,10 @@ export function SmartGarden() {
   }
 
   const groupedLogs = pumpLogs.reduce((groups: any, log: any) => {
-    const date = new Date(log.createdAt || log.timestamp);
+    const rawTime = log.createdAt || log.timestamp;
+    const fixedTime = rawTime && !rawTime.endsWith('Z') ? `${rawTime}Z` : rawTime;
+    const date = new Date(fixedTime || 0);
+    
     const dateStr = date.toLocaleDateString('en-GB'); 
     
     if (!groups[dateStr]) {
@@ -752,7 +799,7 @@ export function SmartGarden() {
               {isPumpDropdownOpen && (
                 <div className="absolute top-full left-0 right-0 mt-2 bg-card rounded-2xl shadow-lg z-20 overflow-hidden border">
                   {pumps.map((pump) => (
-                    <button key={pump.id} onClick={() => { setSelectedPump(pump); setIsPumpDropdownOpen(false) }} className={cn("w-full flex items-center gap-3 p-4 hover:bg-accent text-left", selectedPump.id === pump.id && "bg-accent")}>
+                    <button key={pump.id} onClick={() => { setSelectedPump(pump); setMode(pump.mode || "MANUAL"); setIsPumpDropdownOpen(false) }} className={cn("w-full flex items-center gap-3 p-4 hover:bg-accent text-left", selectedPump.id === pump.id && "bg-accent")}>
                       <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center"><Droplets className="w-5 h-5 text-primary" /></div>
                       <div><p className="font-medium text-foreground">{pump.name}</p><p className="text-xs text-muted-foreground">{pump.mac}</p></div>
                       {selectedPump.id === pump.id && <Check className="w-5 h-5 text-primary ml-auto" />}
@@ -823,39 +870,45 @@ export function SmartGarden() {
             
             {/* in-day log */}
             <div className="space-y-3">
-              {groupedLogs[date].map((log: any, index: number) => (
-                <div key={log.id || index} className="bg-card p-4 rounded-2xl shadow-sm border border-border/50 flex flex-col gap-3">
-                  <div className="flex justify-between items-start gap-2">
-                    <div className="flex-1">
-                      <p className="font-semibold text-sm leading-tight text-foreground">
-                        Pump turned {log.action === 'ON' ? 'ON' : 'OFF'}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
-                        {new Date(log.createdAt || log.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
-                      </p>
-                    </div>
-                    <span className={cn(
-                      "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase shrink-0 whitespace-nowrap",
-                      log.status === 'SUCCESS' ? "bg-green-500/10 text-green-500" : "bg-destructive/10 text-destructive"
-                    )}>
-                      {log.status || 'SUCCESS'}
-                    </span>
-                  </div>
+              {groupedLogs[date].map((log: any, index: number) => {
+                // Fix: Thêm 'Z' để hiển thị giờ đúng
+                const rawTime = log.createdAt || log.timestamp;
+                const fixedTime = rawTime && !rawTime.endsWith('Z') ? `${rawTime}Z` : rawTime;
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-[7px] bg-muted/50 p-2.5 flex flex-col justify-center">
-                      <p className="text-[10px] text-muted-foreground uppercase font-medium">Mode</p>
-                      <p className="text-sm font-semibold text-foreground">{log.mode || 'MANUAL'}</p>
+                return (
+                  <div key={log.id || index} className="bg-card p-4 rounded-2xl shadow-sm border border-border/50 flex flex-col gap-3">
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="flex-1">
+                        <p className="font-semibold text-sm leading-tight text-foreground">
+                          Pump turned {log.action === 'ON' ? 'ON' : 'OFF'}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          {new Date(fixedTime || 0).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                        </p>
+                      </div>
+                      <span className={cn(
+                        "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase shrink-0 whitespace-nowrap",
+                        log.status === 'SUCCESS' ? "bg-green-500/10 text-green-500" : "bg-destructive/10 text-destructive"
+                      )}>
+                        {log.status || 'SUCCESS'}
+                      </span>
                     </div>
-                    <div className="rounded-[7px] bg-primary/5 p-2.5 border border-primary/10 flex flex-col justify-center">
-                      <p className="text-[10px] text-primary uppercase font-bold">Water Volume</p>
-                      <p className="text-sm font-bold text-primary">
-                        {log.waterVolume ? `${log.waterVolume.toFixed(2)} L` : '0.00 L'}
-                      </p>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-[7px] bg-muted/50 p-2.5 flex flex-col justify-center">
+                        <p className="text-[10px] text-muted-foreground uppercase font-medium">Mode</p>
+                        <p className="text-sm font-semibold text-foreground">{log.mode || 'MANUAL'}</p>
+                      </div>
+                      <div className="rounded-[7px] bg-primary/5 p-2.5 border border-primary/10 flex flex-col justify-center">
+                        <p className="text-[10px] text-primary uppercase font-bold">Water Volume</p>
+                        <p className="text-sm font-bold text-primary">
+                          {log.waterVolume ? `${log.waterVolume.toFixed(2)} L` : '0.00 L'}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         ))

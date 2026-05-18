@@ -15,8 +15,12 @@ export function DashboardTab({
 }: any) {
   const recentLogs = [...(pumpLogs || [])]
     .sort((a, b) => {
-      const timeA = new Date(a.timestamp || a.createdAt || 0).getTime();
-      const timeB = new Date(b.timestamp || b.createdAt || 0).getTime();
+      const rawA = a.timestamp || a.createdAt;
+      const timeA = rawA ? new Date(rawA.endsWith('Z') ? rawA : `${rawA}Z`).getTime() : 0;
+      
+      const rawB = b.timestamp || b.createdAt;
+      const timeB = rawB ? new Date(rawB.endsWith('Z') ? rawB : `${rawB}Z`).getTime() : 0;
+      
       return timeB - timeA;
     })
     .slice(0, 3);
@@ -125,7 +129,10 @@ export function DashboardTab({
 
                 const logMode = log.mode || (log.isAuto ? 'AUTO' : 'MANUAL') || 'MANUAL';
                 const isSuccess = log.status === 'Success' || log.status === 'SUCCESS' || (log.success !== false && log.status !== 'Failed');
-                const timeString = log.timestamp || log.createdAt || log.created_at;
+                let timeString = log.timestamp || log.createdAt || log.created_at;
+                if (timeString && !timeString.endsWith('Z')) {
+                  timeString += 'Z';
+                }
 
                 return (
                   <div key={index} className="flex flex-col p-3 bg-muted/50 rounded-2xl border border-border/50 text-xs transition-colors hover:bg-muted">

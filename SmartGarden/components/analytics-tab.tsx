@@ -193,9 +193,9 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
   // Metrics calculation
   const metrics = useMemo(() => {
     let optimalStr = ""; let minBound = 0, maxBound = 100;
-    if (selectedSensor === "temp") { optimalStr = `${thresholds?.minTemp || 15}-${thresholds?.maxTemp || 35}°C`; minBound = thresholds?.minTemp || 15; maxBound = thresholds?.maxTemp || 35; }
-    if (selectedSensor === "moisture") { optimalStr = `>${thresholds?.moistureThreshold || 40}%`; minBound = thresholds?.moistureThreshold || 40; maxBound = 100; }
-    if (selectedSensor === "light") { optimalStr = `<${thresholds?.maxLight || 90}k lux`; minBound = 0; maxBound = thresholds?.maxLight || 90; }
+    if (selectedSensor === "temp") { optimalStr = `${thresholds?.minTemp || 15}-${thresholds?.maxTemp || 35}`; minBound = thresholds?.minTemp || 15; maxBound = thresholds?.maxTemp || 35; }
+    if (selectedSensor === "moisture") { optimalStr = `>${thresholds?.moistureThreshold || 40}`; minBound = thresholds?.moistureThreshold || 40; maxBound = 100; }
+    if (selectedSensor === "light") { optimalStr = `<${thresholds?.maxLight || 90}`; minBound = 0; maxBound = thresholds?.maxLight || 90; }
 
     const defaultMetrics = {
       sum: 0, avg: 0, max: 0, min: 0, trendValue: 0, optimal: optimalStr, pumpCycles: 0, optimalPercentage: 100, outOfBoundHours: "0", dropRate: "0.00", estTime: "0.0"
@@ -402,7 +402,7 @@ export function AnalyticsTab({ sensors, selectedSensor, setSelectedSensor, thres
             {!isWater ? (
               <>
                 <MetricCard id="highLow" activeTooltip={activeTooltip} setActiveTooltip={setActiveTooltip} icon={<AlertCircle />} title="High / Low" value={`${metrics.max.toFixed(1)} / ${metrics.min.toFixed(1)}`} unit={getUnit()} tooltip="The absolute highest and lowest raw values recorded during this period." />
-                <MetricCard id="optimal" activeTooltip={activeTooltip} setActiveTooltip={setActiveTooltip} icon={<Target />} title="Optimal Range" value={metrics.optimal}  unit="" tooltip="The safe system boundaries configured in your settings. Staying within this range means the plant is healthy." />
+                <MetricCard id="optimal" activeTooltip={activeTooltip} setActiveTooltip={setActiveTooltip} icon={<Target />} title="Optimal Range" value={metrics.optimal}  unit={getUnit()} tooltip="The safe system boundaries configured in your settings. Staying within this range means the plant is healthy." />
                 <MetricCard id="timeOpt" activeTooltip={activeTooltip} setActiveTooltip={setActiveTooltip} icon={<Activity />} title="Time Optimal" value={`${metrics.optimalPercentage}`} unit="%" tooltip="The percentage of time the environment was perfectly maintained within your configured optimal range." />
                 
                 {selectedSensor === "moisture" ? (
