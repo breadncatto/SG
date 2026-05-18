@@ -17,6 +17,7 @@ export interface Pump {
   connectionId?: number
   userId?: number
   mac: string
+  mode?: "AUTO" | "MANUAL"
   sensors: Sensor[]
   sensorData: {
     temp: number
