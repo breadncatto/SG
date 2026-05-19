@@ -149,14 +149,27 @@ export function SmartGarden() {
 
         if (fcmToken && deviceId) {
           try {
-            await api.post('/api/notification/register-device', {
-              userId: validUserId,
-              phoneUUID: deviceId, 
-              token: fcmToken    
-            });
-            console.log("Device successfully registered for push notifications!");
+            const isDeviceRegistered = localStorage.getItem(`registered_${deviceId}`);
+
+            if (!isDeviceRegistered) {
+              await api.post('/api/phone', {
+                name: "Web Browser", 
+                phoneUUID: deviceId, 
+                userId: validUserId, 
+                token: fcmToken      
+              });
+              localStorage.setItem(`registered_${deviceId}`, "true");
+              console.log("Device registered successfully!");
+
+            } else {
+              await api.post('/api/phone/token', {
+                phoneUUID: deviceId, 
+                token: fcmToken      
+              });
+              console.log("Device's token updated successfully!");
+            }
           } catch (err) {
-            console.warn("Notification API not ready or network error:", err);
+            console.warn("Err in sending FCM token:", err);
           }
         }
 
@@ -186,8 +199,8 @@ export function SmartGarden() {
         userId: currentUser.id || currentUser.userId,
         brokerName: "system",
         feed: uniqueFeed,
-        password: "DADN-hk2]2026", 
-        address: "ssl://205dd780c5cd4cd6af5c18efd1914a37.s1.eu.hivemq.cloud:8883"
+        password: "DADN-hk2-2026", 
+        address: "ssl://2230cdebe3c240109e1fa590f69675c5.s1.eu.hivemq.cloud:8883"
       };
       
       const connRes = await api.post('/api/connection', connPayload);
@@ -871,7 +884,6 @@ export function SmartGarden() {
             {/* in-day log */}
             <div className="space-y-3">
               {groupedLogs[date].map((log: any, index: number) => {
-                // Fix: Thêm 'Z' để hiển thị giờ đúng
                 const rawTime = log.createdAt || log.timestamp;
                 const fixedTime = rawTime && !rawTime.endsWith('Z') ? `${rawTime}Z` : rawTime;
 
