@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 const API_BASE_URL = 'https://mac4tpet6z.ap-southeast-1.awsapprunner.com';
+//const API_BASE_URL = 'http://localhost:8080'; Local
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
