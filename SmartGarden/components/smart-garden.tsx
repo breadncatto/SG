@@ -300,9 +300,12 @@ export function SmartGarden() {
      } catch (e) {}
   }
 
-  useEffect(() => {
-    setupForegroundMessageListener();
-  }, []);
+  // useEffect(() => {
+  //   if (authState === "authenticated") {
+  //     console.log("Test foreground...");
+  //     setupForegroundMessageListener();
+  //   }
+  // }, [authState]);
 
   useEffect(() => {
     const fetchPumpDetails = async (pumpId: number) => {
@@ -381,6 +384,8 @@ export function SmartGarden() {
       fetchPumpDetails(selectedPump.id);
       fetchUserAlerts(userId);
       //fetchNotifications();
+
+      setupForegroundMessageListener();
 
       const dbRef = ref(rtdb, `updates/${userId}`);
       
