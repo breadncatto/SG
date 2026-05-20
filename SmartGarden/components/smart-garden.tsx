@@ -132,9 +132,14 @@ export function SmartGarden() {
 
   const handleLogout = async () => { 
     const currentToken = localStorage.getItem("token");
+    const deviceId = getDeviceId();
+
     if (currentToken) {
       try {
-        await api.post("/auth/logout", { token: currentToken });
+        await api.post("/auth/logout", { 
+          token: currentToken,
+          phoneUUID: deviceId 
+        });
       } catch (err) {
         console.error("Failed to logout on server:", err);
       }
@@ -479,6 +484,15 @@ export function SmartGarden() {
           if (newData.type === "PUMP_STATUS") {
              const isOn = newData.value === "ON";
              setIsPumpOn(isOn);
+             api.get(`/api/pumpLog/pump/${selectedPump.id}`)
+                .catch(() => api.get(`/api/pump-log/pump/${selectedPump.id}`))
+                .then((logRes) => {
+                  if (logRes && logRes.data) {
+                    setPumpLogs(logRes.data);
+                  }
+                })
+                .catch(err => console.log("Silent fetch log failed"));
+                
              return;
           }
 
@@ -568,22 +582,7 @@ export function SmartGarden() {
     if (!selectedPump || !currentUser) return;
 
     try {
-      const currentThresholds = selectedPump.thresholds;
-
-      await api.put('/api/pump', {
-        id: selectedPump.id, 
-        name: selectedPump.name, 
-        connectionId: selectedPump.connectionId, 
-        userId: currentUser.id || currentUser.userId,
-        mode: newMode, 
-        temperatureMax: currentThresholds.maxTemp, 
-        temperatureMin: currentThresholds.minTemp, 
-        lightIntensityMax: currentThresholds.maxLight, 
-        moistureThreshold: currentThresholds.moistureThreshold,
-        fieldCapacity: currentThresholds.fieldCapacity, 
-        rootDepth: currentThresholds.rootDepth, 
-        area: currentThresholds.area 
-      });
+      await api.put(`/api/pump/${selectedPump.id}/${newMode}`);
 
       setMode(newMode); 
 
@@ -613,10 +612,10 @@ export function SmartGarden() {
     setShowPowerConfirm(false); 
 
     try {
-      await api.post(`/api/pump/manual?pumpId=${selectedPump.id}&onCommand=${pendingPowerState}`);
-      
+      const statusStr = pendingPowerState ? "ON" : "OFF";
+      await api.put(`/api/pump/${selectedPump.id}/${statusStr}`);
       setIsPumpOn(pendingPowerState); 
-      showToast(`Pump successfully turned ${pendingPowerState ? "ON" : "OFF"}`, "success");
+      showToast(`Pump successfully turned ${statusStr}`, "success");
 
       try {
         let logRes = await api.get(`/api/pumpLog/pump/${selectedPump.id}`).catch(() => api.get(`/api/pump-log/pump/${selectedPump.id}`));
@@ -794,7 +793,15 @@ export function SmartGarden() {
     )
   }
 
-  const groupedLogs = pumpLogs.reduce((groups: any, log: any) => {
+  const sortedPumpLogs = [...pumpLogs].sort((a: any, b: any) => {
+    const rawA = a.createdAt || a.timestamp;
+    const rawB = b.createdAt || b.timestamp;
+    const timeA = new Date(rawA && !rawA.endsWith('Z') ? `${rawA}Z` : rawA || 0).getTime();
+    const timeB = new Date(rawB && !rawB.endsWith('Z') ? `${rawB}Z` : rawB || 0).getTime();
+    return timeB - timeA;
+  });
+  
+  const groupedLogs = sortedPumpLogs.reduce((groups: any, log: any) => {
     const rawTime = log.createdAt || log.timestamp;
     const fixedTime = rawTime && !rawTime.endsWith('Z') ? `${rawTime}Z` : rawTime;
     const date = new Date(fixedTime || 0);
@@ -1097,7 +1104,7 @@ export function SmartGarden() {
 
             {/* connection */}
             <div className="p-3 bg-primary/5 rounded-xl border border-primary/20 space-y-3">
-              <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-1">Connection Settings (MQTT)</p>
+              <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-1">Connection Settings</p>
               
               <div className="grid grid-cols-2 gap-3">
                 <div>
