@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { Bell, Home, BarChart3, Settings, Droplets, ChevronDown, Check, Plus, AlertCircle, AlertTriangle, Loader2, User, LogOut, ArrowLeft, Power, Edit2 } from "lucide-react"
+import { Bell, Home, BarChart3, Settings, Droplets, ChevronDown, Check, Plus, AlertCircle, AlertTriangle, Loader2, User, LogOut, ArrowLeft, Power, Edit2, Thermometer, Sun } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
@@ -73,12 +73,15 @@ export function SmartGarden() {
     if (noti.read) return; 
     
     try {
-      await api.put(`/api/alerts/isRead/${noti.id}`);
+      await api.put(`/isRead/${noti.id}`);
       setNotifications(prev => 
-        prev.map(n => n.id === noti.id ? { ...n, read: true } : n)
+        prev.map(n => n.id === noti.id ? { ...n, read: true, unread: false } : n)
+      );
+      setAlertsList(prev => 
+        prev.map(a => a.id === noti.id ? { ...a, unread: false, read: true } : a)
       );
     } catch (error) {
-      console.error("Failed to mark as read:", error);
+      console.error("Failed to mark alert as read:", error);
     }
   };
 
@@ -114,6 +117,10 @@ export function SmartGarden() {
 
   const [pumpForm, setPumpForm] = useState({
     name: "",
+    brokerName: "",
+    feed: "",
+    password: "", 
+    address: "",
     temperatureMax: 35.0,     
     temperatureMin: 15.0,     
     lightIntensityMax: 1000.0, 
@@ -123,9 +130,25 @@ export function SmartGarden() {
     area: 50.0                
   });
 
-  const handleLogout = () => { 
-    setAuthState("welcome"); setShowProfile(false); setPumps([]); setSelectedPump(null); setCurrentUser(null); setActiveTab("home"); localStorage.removeItem("token"); showToast("Logged out successfully!") 
-  }
+  const handleLogout = async () => { 
+    const currentToken = localStorage.getItem("token");
+    if (currentToken) {
+      try {
+        await api.post("/auth/logout", { token: currentToken });
+      } catch (err) {
+        console.error("Failed to logout on server:", err);
+      }
+    }
+    setAuthState("welcome"); 
+    setShowProfile(false); 
+    setPumps([]); 
+    setSelectedPump(null); 
+    setCurrentUser(null); 
+    setActiveTab("home"); 
+    localStorage.removeItem("token"); 
+    localStorage.removeItem("userId"); 
+    showToast("Logged out successfully!"); 
+  };
 
   const handleLoginSuccess = async (userData: any) => {
     const validUserId = userData.userId || userData.id;
@@ -153,20 +176,30 @@ export function SmartGarden() {
 
             if (!isDeviceRegistered) {
               await api.post('/api/phone', {
-                name: "Web Browser", 
+                name: "User", 
                 phoneUUID: deviceId, 
                 userId: validUserId, 
                 token: fcmToken      
               });
               localStorage.setItem(`registered_${deviceId}`, "true");
               console.log("Device registered successfully!");
-
             } else {
-              await api.post('/api/phone/token', {
-                phoneUUID: deviceId, 
-                token: fcmToken      
-              });
-              console.log("Device's token updated successfully!");
+              try {
+                await api.post('/api/phone/token', {
+                  phoneUUID: deviceId, 
+                  token: fcmToken      
+                });
+                console.log("Device's token updated successfully!");
+              } catch (updateErr) {
+                console.warn("Phone is not exist, generating one...");
+                await api.post('/api/phone', {
+                  name: "User", 
+                  phoneUUID: deviceId, 
+                  userId: validUserId, 
+                  token: fcmToken      
+                });
+                console.log("Regenerated successfully!");
+              }
             }
           } catch (err) {
             console.warn("Err in sending FCM token:", err);
@@ -185,22 +218,21 @@ export function SmartGarden() {
   };
 
   const handleCreatePump = async () => {
-    if (!pumpForm.name.trim()) {
-      showToast("Please enter a pump name!", "error");
+    if (!pumpForm.name.trim() || !pumpForm.brokerName.trim() || !pumpForm.feed.trim() || !pumpForm.password.trim() || !pumpForm.address.trim()) {
+      showToast("Please fill in all pump and connection details!", "error");
       return;
     }
+
     setIsAddingPump(true);
     setAddError(null);
 
     try {
-      const uniqueFeed = `SmartGarden/Pump_${Date.now()}`; 
-      
       const connPayload = {
         userId: currentUser.id || currentUser.userId,
-        brokerName: "system",
-        feed: uniqueFeed,
-        password: "DADN-hk2-2026", 
-        address: "ssl://2230cdebe3c240109e1fa590f69675c5.s1.eu.hivemq.cloud:8883"
+        brokerName: pumpForm.brokerName.trim(),
+        feed: pumpForm.feed.trim(),
+        password: pumpForm.password.trim(), 
+        address: pumpForm.address.trim()
       };
       
       const connRes = await api.post('/api/connection', connPayload);
@@ -229,7 +261,8 @@ export function SmartGarden() {
       showToast("Pump added successfully!", "success");
 
       setPumpForm({
-        name: "", temperatureMax: 35.0, temperatureMin: 15.0, 
+        name: "", brokerName: "HiveMQ", feed: "SmartGarden/", password: "", address: "ssl://2230cdebe3c240109e1fa590f69675c5.s1.eu.hivemq.cloud:8883",
+        temperatureMax: 35.0, temperatureMin: 15.0, 
         lightIntensityMax: 1000.0, moistureThreshold: 60.0, 
         fieldCapacity: 30.0, rootDepth: 20.0, area: 50.0
       })
@@ -279,33 +312,80 @@ export function SmartGarden() {
     }
   }
 
-  const fetchUserAlerts = async (userId: number) => {
+  const fetchPumpAlerts = async (pumpId: number) => {
      try {
-       const res = await api.get(`/api/alert/user/${userId}`)
+       const res = await api.get(`/pump/${pumpId}`);
        if (res.data) {
          const formattedAlerts = res.data.map((a: any) => {
            const rawTime = a.createdAt || a.created_at;
            const fixedTime = rawTime && !rawTime.endsWith('Z') ? `${rawTime}Z` : rawTime;
+           const isAlertRead = a.read !== undefined ? a.read : (a.isRead === true);
            
            return {
              id: a.id || a.alertId, 
+             type: a.type, 
              message: a.message || "Alert received",
              time: new Date(fixedTime || 0).toLocaleString(), 
-             unread: !a.isRead
+             read: isAlertRead,       
+             unread: !isAlertRead     
            };
-         })
-         formattedAlerts.sort((a: any, b: any) => new Date(b.time).getTime() - new Date(a.time).getTime())
-         setAlertsList(formattedAlerts)
+         });
+         
+         formattedAlerts.sort((a: any, b: any) => new Date(b.time).getTime() - new Date(a.time).getTime());
+         setAlertsList(formattedAlerts);
+         setNotifications(formattedAlerts);
        }
-     } catch (e) {}
-  }
+     } catch (e) {
+       console.error("Failed to fetch pump alerts:", e);
+     }
+  };
 
-  // useEffect(() => {
-  //   if (authState === "authenticated") {
-  //     console.log("Test foreground...");
-  //     setupForegroundMessageListener();
-  //   }
-  // }, [authState]);
+  //Introspect
+  useEffect(() => {
+    const checkExistingToken = async () => {
+      const token = localStorage.getItem("token");
+      const savedUserId = localStorage.getItem("userId");
+      
+      if (token && savedUserId) {
+        try {
+          console.log("Checking existing token validity...");
+          await api.post("/auth/introspect", { token });
+          
+          console.log("Token is valid! Performing automatic login...");
+          handleLoginSuccess({ userId: parseInt(savedUserId), token });
+        } catch (err) {
+          console.warn("Existing token is expired or invalid. Requiring re-authentication.");
+          localStorage.removeItem("token");
+          localStorage.removeItem("userId");
+        }
+      }
+    };
+    
+    checkExistingToken();
+  }, []);
+
+  //10 min polling
+  useEffect(() => {
+    if (authState === "authenticated") {
+      const refreshInterval = setInterval(async () => {
+        const currentToken = localStorage.getItem("token");
+        if (!currentToken) return;
+
+        try {
+          const res = await api.post("/auth/refresh", { token: currentToken });
+          if (res.data && res.data.token) {
+            localStorage.setItem("token", res.data.token);
+            console.log("Token refreshed successfully via polling!");
+          }
+        } catch (err) {
+          console.error("Token expired or invalid, logging out...", err);
+          handleLogout(); 
+        }
+      }, 10 * 60 * 1000); 
+
+      return () => clearInterval(refreshInterval);
+    }
+  }, [authState]);
 
   useEffect(() => {
     const fetchPumpDetails = async (pumpId: number) => {
@@ -324,7 +404,7 @@ export function SmartGarden() {
         console.error("Failed to sync pump state from server:", err);
       }
       try{
-        const deviceRes = await api.get(`/api/device/by-pump?pumpId=${pumpId}`);
+        const deviceRes = await api.get(`/api/device/by-pump?pumpId=${selectedPump.id}`);
         const devices = deviceRes.data;
         
         const sensors: any[] = devices.map((d: any) => ({
@@ -382,10 +462,12 @@ export function SmartGarden() {
     if (selectedPump && currentUser) {
       const userId = currentUser.id || currentUser.userId;
       fetchPumpDetails(selectedPump.id);
-      fetchUserAlerts(userId);
+      fetchPumpAlerts(selectedPump.id);
       //fetchNotifications();
 
-      setupForegroundMessageListener();
+      setupForegroundMessageListener(() => {
+        fetchPumpAlerts(selectedPump.id);
+      })
 
       const dbRef = ref(rtdb, `updates/${userId}`);
       
@@ -778,9 +860,9 @@ export function SmartGarden() {
                             )}
                           >
                             <div className={cn("p-2 rounded-lg mt-0.5", !noti.read ? "bg-background" : "bg-muted")}>
-                              {noti.type === 'TEMPERATURE' && <span className="text-orange-500 font-bold text-xs">T</span>}
-                              {noti.type === 'MOISTURE' && <span className="text-blue-500 font-bold text-xs">M</span>}
-                              {noti.type === 'LIGHT' && <span className="text-yellow-500 font-bold text-xs">L</span>}
+                              {noti.type === 'TEMPERATURE' && <Thermometer className="w-4 h-4 text-orange-500" />}
+                              {noti.type === 'MOISTURE' && <Droplets className="w-4 h-4 text-blue-500" />}
+                              {noti.type === 'LIGHT' && <Sun className="w-4 h-4 text-yellow-500" />}
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className={cn("text-xs font-bold", !noti.read ? "text-foreground" : "text-muted-foreground")}>
@@ -981,93 +1063,100 @@ export function SmartGarden() {
       </Dialog>
 
       <Dialog open={showAddPump} onOpenChange={(open) => { 
-  setShowAddPump(open); 
-  if (!open) { 
-    setAddError(null); 
-    setIsAddingPump(false);
-    setPumpForm({
-      name: "", temperatureMax: 35.0, temperatureMin: 15.0, 
-      lightIntensityMax: 1000.0, moistureThreshold: 60.0, 
-      fieldCapacity: 30.0, rootDepth: 20.0, area: 50.0
-    });
-  }
-}}>
-  <DialogContent className="max-w-md mx-4 rounded-3xl">
-    <DialogHeader>
-      <DialogTitle className="flex items-center gap-2">
-        <Plus className="w-5 h-5 text-primary" />Add New Pump
-      </DialogTitle>
-    </DialogHeader>
-    
-    {addError && (
-      <div className="bg-destructive/10 rounded-xl p-4 flex gap-3">
-        <AlertCircle className="w-5 h-5 text-destructive" />
-        <p className="text-sm text-destructive">{addError}</p>
-      </div>
-    )}
-    
-    <div className="space-y-4">
-      {/* Pump name */}
-      <div>
-        <label className="text-sm font-medium block mb-2">Pump Name</label>
-        <Input 
-          placeholder="e.g., Rose Garden" 
-          value={pumpForm.name} 
-          onChange={(e) => setPumpForm({ ...pumpForm, name: e.target.value })} 
-          disabled={isAddingPump} 
-          className="rounded-xl" 
-        />
-      </div>
+        setShowAddPump(open); 
+        if (!open) { 
+          setAddError(null); 
+          setIsAddingPump(false);
+          setPumpForm({
+            name: "", brokerName: "", feed: "", password: "", address: "",
+            temperatureMax: 35.0, temperatureMin: 15.0, 
+            lightIntensityMax: 1000.0, moistureThreshold: 60.0, 
+            fieldCapacity: 30.0, rootDepth: 20.0, area: 50.0
+          });
+        }
+      }}>
+        <DialogContent className="max-w-md mx-4 rounded-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="w-5 h-5 text-primary" />Add New Pump
+            </DialogTitle>
+          </DialogHeader>
+          
+          {addError && (
+            <div className="bg-destructive/10 rounded-xl p-4 flex gap-3">
+              <AlertCircle className="w-5 h-5 text-destructive" />
+              <p className="text-sm text-destructive">{addError}</p>
+            </div>
+          )}
+          
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium block mb-2">Pump Name</label>
+              <Input placeholder="e.g., Rose Garden" value={pumpForm.name} onChange={(e) => setPumpForm({ ...pumpForm, name: e.target.value })} disabled={isAddingPump} className="rounded-xl" />
+            </div>
 
-      {}
-      <div className="grid grid-cols-2 gap-3 p-3 bg-muted/30 rounded-xl border border-border/50">
-        <div className="col-span-2">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
-            Environment Settings (Default)
-          </p>
-        </div>
-        
-        <div>
-          <label className="text-xs block mb-1">Max Temp (°C)</label>
-          <Input type="number" value={pumpForm.temperatureMax} onChange={(e) => setPumpForm({ ...pumpForm, temperatureMax: parseFloat(e.target.value) || 0 })} disabled={isAddingPump} className="h-8 text-sm" />
-        </div>
-        <div>
-          <label className="text-xs block mb-1">Min Temp (°C)</label>
-          <Input type="number" value={pumpForm.temperatureMin} onChange={(e) => setPumpForm({ ...pumpForm, temperatureMin: parseFloat(e.target.value) || 0 })} disabled={isAddingPump} className="h-8 text-sm" />
-        </div>
-        <div>
-          <label className="text-xs block mb-1">Max Light (Lux)</label>
-          <Input type="number" value={pumpForm.lightIntensityMax} onChange={(e) => setPumpForm({ ...pumpForm, lightIntensityMax: parseFloat(e.target.value) || 0 })} disabled={isAddingPump} className="h-8 text-sm" />
-        </div>
-        <div>
-          <label className="text-xs block mb-1">Moisture Threshold (%)</label>
-          <Input type="number" value={pumpForm.moistureThreshold} onChange={(e) => setPumpForm({ ...pumpForm, moistureThreshold: parseFloat(e.target.value) || 0 })} disabled={isAddingPump} className="h-8 text-sm" />
-        </div>
-        <div>
-          <label className="text-xs block mb-1">Field Capacity</label>
-          <Input type="number" value={pumpForm.fieldCapacity} onChange={(e) => setPumpForm({ ...pumpForm, fieldCapacity: parseFloat(e.target.value) || 0 })} disabled={isAddingPump} className="h-8 text-sm" />
-        </div>
-        <div>
-          <label className="text-xs block mb-1">Root Depth (cm)</label>
-          <Input type="number" value={pumpForm.rootDepth} onChange={(e) => setPumpForm({ ...pumpForm, rootDepth: parseFloat(e.target.value) || 0 })} disabled={isAddingPump} className="h-8 text-sm" />
-        </div>
-        <div className="col-span-2">
-          <label className="text-xs block mb-1">Area (m²)</label>
-          <Input type="number" value={pumpForm.area} onChange={(e) => setPumpForm({ ...pumpForm, area: parseFloat(e.target.value) || 0 })} disabled={isAddingPump} className="h-8 text-sm" />
-        </div>
-      </div>
-    </div>
-    
-    <DialogFooter>
-      <Button variant="outline" onClick={() => setShowAddPump(false)} disabled={isAddingPump}>
-        Cancel
-      </Button>
-      <Button onClick={handleCreatePump} disabled={!pumpForm.name.trim() || isAddingPump}>
-        {isAddingPump ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Adding...</> : "Add"}
-      </Button>
-    </DialogFooter>
-  </DialogContent>
-</Dialog>
+            {/* connection */}
+            <div className="p-3 bg-primary/5 rounded-xl border border-primary/20 space-y-3">
+              <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-1">Connection Settings (MQTT)</p>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs block mb-1">Broker Name</label>
+                  <Input value={pumpForm.brokerName} onChange={(e) => setPumpForm({ ...pumpForm, brokerName: e.target.value })} disabled={isAddingPump} className="h-8 text-sm bg-background" />
+                </div>
+                <div>
+                  <label className="text-xs block mb-1">Password</label>
+                  <Input type="password" value={pumpForm.password} onChange={(e) => setPumpForm({ ...pumpForm, password: e.target.value })} disabled={isAddingPump} className="h-8 text-sm bg-background" />
+                </div>
+              </div>
+              
+              <div>
+                <label className="text-xs block mb-1">Feed</label>
+                <Input 
+                  placeholder="e.g., MyFarm/Pump1" 
+                  value={pumpForm.feed} 
+                  onChange={(e) => setPumpForm({ ...pumpForm, feed: e.target.value })} 
+                  disabled={isAddingPump} 
+                  className="h-8 text-sm bg-background" 
+                />
+              </div>
+              
+              <div>
+                <label className="text-xs block mb-1">Address</label>
+                <Input 
+                  placeholder="e.g., tcp://broker.hivemq.com:1883" 
+                  value={pumpForm.address} 
+                  onChange={(e) => setPumpForm({ ...pumpForm, address: e.target.value })} 
+                  disabled={isAddingPump} 
+                  className="h-8 text-sm bg-background" 
+                />
+              </div>
+            </div>
+
+            {/* env setting */}
+            <div className="grid grid-cols-2 gap-3 p-3 bg-muted/30 rounded-xl border border-border/50">
+              <div className="col-span-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Environment Settings (Default)</p>
+              </div>
+              
+              <div><label className="text-xs block mb-1">Max Temp (°C)</label><Input type="number" value={pumpForm.temperatureMax} onChange={(e) => setPumpForm({ ...pumpForm, temperatureMax: parseFloat(e.target.value) || 0 })} disabled={isAddingPump} className="h-8 text-sm" /></div>
+              <div><label className="text-xs block mb-1">Min Temp (°C)</label><Input type="number" value={pumpForm.temperatureMin} onChange={(e) => setPumpForm({ ...pumpForm, temperatureMin: parseFloat(e.target.value) || 0 })} disabled={isAddingPump} className="h-8 text-sm" /></div>
+              <div><label className="text-xs block mb-1">Max Light (Lux)</label><Input type="number" value={pumpForm.lightIntensityMax} onChange={(e) => setPumpForm({ ...pumpForm, lightIntensityMax: parseFloat(e.target.value) || 0 })} disabled={isAddingPump} className="h-8 text-sm" /></div>
+              <div><label className="text-xs block mb-1">Moisture Thresh (%)</label><Input type="number" value={pumpForm.moistureThreshold} onChange={(e) => setPumpForm({ ...pumpForm, moistureThreshold: parseFloat(e.target.value) || 0 })} disabled={isAddingPump} className="h-8 text-sm" /></div>
+              <div><label className="text-xs block mb-1">Field Capacity</label><Input type="number" value={pumpForm.fieldCapacity} onChange={(e) => setPumpForm({ ...pumpForm, fieldCapacity: parseFloat(e.target.value) || 0 })} disabled={isAddingPump} className="h-8 text-sm" /></div>
+              <div><label className="text-xs block mb-1">Root Depth (cm)</label><Input type="number" value={pumpForm.rootDepth} onChange={(e) => setPumpForm({ ...pumpForm, rootDepth: parseFloat(e.target.value) || 0 })} disabled={isAddingPump} className="h-8 text-sm" /></div>
+              <div className="col-span-2"><label className="text-xs block mb-1">Area (m²)</label><Input type="number" value={pumpForm.area} onChange={(e) => setPumpForm({ ...pumpForm, area: parseFloat(e.target.value) || 0 })} disabled={isAddingPump} className="h-8 text-sm" /></div>
+            </div>
+          </div>
+          
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setShowAddPump(false)} disabled={isAddingPump}>Cancel</Button>
+            <Button onClick={handleCreatePump} disabled={!pumpForm.name.trim() || isAddingPump}>
+              {isAddingPump ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Adding...</> : "Add"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showAddSensor} onOpenChange={(open) => { setShowAddSensor(open); if (!open) { setNewSensorType(availableSensorTypes[0] || "Temperature") }}}>
         <DialogContent className="max-w-md mx-4 rounded-3xl">

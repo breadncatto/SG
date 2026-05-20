@@ -42,30 +42,31 @@ export const requestPushNotificationPermission = async () => {
 
 let isListenerAttached = false;
 
-export const setupForegroundMessageListener = async () => {
+export const setupForegroundMessageListener = async (onNewMessage?: () => void) => {
   if (isListenerAttached) return;
-  isListenerAttached = true; 
 
   try {
     const msg = await messaging();
-    if (!msg) {
-      isListenerAttached = false; 
-      return;
-    }
+    if (!msg) return;
 
     onMessage(msg, (payload) => {
-      console.log("Foreground message:", payload);
+      console.log("Message received:", payload);
+      
       if (Notification.permission === "granted") {
-        new Notification(payload.notification?.title || "Alert noti", {
-          body: payload.notification?.body || "New event!",
-          icon: "/logo.png",
+        new Notification(payload.notification?.title || "New device's alert", {
+          body: payload.notification?.body || "New device's event!",
+          icon: "/logo.png"
         });
+      }
+
+      if (onNewMessage) {
+        onNewMessage();
       }
     });
 
-    console.log("Foreground activated!");
+    isListenerAttached = true;
+    console.log("Foreground test!");
   } catch (err) {
-    isListenerAttached = false; 
     console.log("Err Foreground listener:", err);
   }
 };

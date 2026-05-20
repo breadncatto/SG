@@ -5,8 +5,7 @@ import { Sprout, ArrowLeft, AlertCircle, Eye, EyeOff, Loader2 } from "lucide-rea
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
-
-const API_BASE_URL = "https://mac4tpet6z.ap-southeast-1.awsapprunner.com"
+import { api } from "@/lib/api"
 
 export function WelcomeScreen({ onLogin, onRegister }: any) {
   return (
@@ -50,21 +49,25 @@ export function LoginScreen({ form, setForm, onBack, onLoginSuccess, onSwitchToR
       setIsLoading(true)
       setServerError(null)
       try {
-        const response = await fetch(`${API_BASE_URL}/auth/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username: form.username, password: form.password }) 
-        })
+        localStorage.removeItem("token");
+        localStorage.removeItem("userId");
+        const response = await api.post("/auth/login", {
+          username: form.username,
+          password: form.password
+        });
         
-        if (response.ok) {
-          const data = await response.json()
-          if(data.token) localStorage.setItem("token", data.token)
-          onLoginSuccess(data)
-        } else {
-          setServerError("Invalid username or password")
+        const data = response.data;
+        if(data.token) {
+          localStorage.setItem("token", data.token);
+          if(data.userId) localStorage.setItem("userId", data.userId.toString());
+          onLoginSuccess(data);
         }
-      } catch (error) {
-        setServerError("Network error. Please check your connection.")
+      } catch (error: any) {
+        if (error.response && error.response.status === 401) {
+           setServerError("Invalid username or password!");
+        } else {
+           setServerError("Connection failed. Try again");
+        }
       } finally {
         setIsLoading(false)
       }
@@ -140,24 +143,19 @@ export function RegisterScreen({ form, setForm, onBack, onRegisterSuccess, onSwi
     if (!Object.values(errs).some(Boolean)) {
       setIsLoading(true)
       try {
-        const response = await fetch(`${API_BASE_URL}/api/user`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            fullName: form.fullName, 
-            email: form.email, 
-            userName: form.username, 
-            password: form.password 
-          })
-        })
-        
-        if (response.ok) {
-          onRegisterSuccess()
+        await api.post("/user", { 
+          fullName: form.fullName, 
+          email: form.email, 
+          userName: form.username, 
+          password: form.password 
+        });
+        onRegisterSuccess();
+      } catch (err: any) {
+        if (err.response && (err.response.status === 400 || err.response.status === 409)) {
+          setServerError("Registration failed. Username or email might already exist.");
         } else {
-          setServerError("Registration failed. Username or email might already exist.")
+          setServerError("Network error. Please try again later.");
         }
-      } catch (err) {
-        setServerError("Network error. Please try again later.")
       } finally {
         setIsLoading(false)
       }
