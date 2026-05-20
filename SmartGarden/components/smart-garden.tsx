@@ -261,7 +261,7 @@ export function SmartGarden() {
       showToast("Pump added successfully!", "success");
 
       setPumpForm({
-        name: "", brokerName: "HiveMQ", feed: "SmartGarden/", password: "", address: "ssl://2230cdebe3c240109e1fa590f69675c5.s1.eu.hivemq.cloud:8883",
+        name: "", brokerName: "", feed: "", password: "", address: "",
         temperatureMax: 35.0, temperatureMin: 15.0, 
         lightIntensityMax: 1000.0, moistureThreshold: 60.0, 
         fieldCapacity: 30.0, rootDepth: 20.0, area: 50.0
