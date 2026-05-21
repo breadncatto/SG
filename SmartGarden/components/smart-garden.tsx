@@ -488,14 +488,17 @@ export function SmartGarden() {
           if (newData.type === "PUMP_STATUS") {
              const isOn = newData.value === "ON";
              setIsPumpOn(isOn);
-             api.get(`/api/pumpLog/pump/${selectedPump.id}`)
-                .catch(() => api.get(`/api/pump-log/pump/${selectedPump.id}`))
-                .then((logRes) => {
-                  if (logRes && logRes.data) {
-                    setPumpLogs(logRes.data);
-                  }
-                })
-                .catch(err => console.log("Silent fetch log failed"));
+             
+             setTimeout(() => {
+               api.get(`/api/pumpLog/pump/${selectedPump.id}`)
+                  .catch(() => api.get(`/api/pump-log/${selectedPump.id}`))
+                  .then((logRes) => {
+                    if (logRes && logRes.data) {
+                      setPumpLogs(logRes.data);
+                    }
+                  })
+                  .catch(err => console.log("Silent fetch log failed"));
+             }, 2000);
                 
              return;
           }
@@ -557,14 +560,11 @@ export function SmartGarden() {
   }, [selectedPump ? selectedPump.id : null, currentUser]);
 
   const handleUpdateThresholds = async (newThresholds: any) => {
-    if (!selectedPump || !currentUser) return
+    if (!selectedPump || !currentUser) return;
+    
     try {
-      await api.put('/api/pump', {
+      await api.put('/api/pump/config', {
         id: selectedPump.id, 
-        name: selectedPump.name, 
-        connectionId: selectedPump.connectionId, 
-        userId: currentUser.id || currentUser.userId,
-        mode: selectedPump.mode || "MANUAL", 
         temperatureMax: newThresholds.maxTemp, 
         temperatureMin: newThresholds.minTemp, 
         lightIntensityMax: newThresholds.maxLight, 
@@ -573,11 +573,14 @@ export function SmartGarden() {
         rootDepth: newThresholds.rootDepth, 
         area: newThresholds.area 
       });
-      const updatedPump = { ...selectedPump, thresholds: newThresholds }
-      setPumps(prev => prev.map(p => p.id === selectedPump.id ? updatedPump : p))
-      setSelectedPump(updatedPump)
-      showToast("Configuration updated successfully!")
-    } catch (error) { showToast("Failed to save configuration", "error") }
+      const updatedPump = { ...selectedPump, thresholds: newThresholds };
+      setPumps(prev => prev.map(p => p.id === selectedPump.id ? updatedPump : p));
+      setSelectedPump(updatedPump);
+      
+      showToast("Configuration updated successfully!", "success");
+    } catch (error) { 
+      showToast("Failed to save configuration", "error"); 
+    }
   }
 
   const handleModeSwitch = () => { if (mode === "AUTO") setShowModeConfirm(true); else switchMode("AUTO") }
@@ -618,13 +621,17 @@ export function SmartGarden() {
       
       setIsPumpOn(pendingPowerState); 
       showToast(`Pump successfully turned ${pendingPowerState ? "ON" : "OFF"}`, "success");
-
-      try {
-        let logRes = await api.get(`/api/pumpLog/pump/${selectedPump.id}`).catch(() => api.get(`/api/pump-log/pump/${selectedPump.id}`));
-        if (logRes && logRes.data) {
-           setPumpLogs(logRes.data);
+      setTimeout(async () => {
+        try {
+          let logRes = await api.get(`/api/pumpLog/${selectedPump.id}`).catch(() => api.get(`/api/pumpLog/${selectedPump.id}`));
+          if (logRes && logRes.data) {
+             setPumpLogs(logRes.data);
+          }
+        } catch (logErr) {
+           console.error("Failed to refresh activity logs");
         }
-      } catch (logErr) {}
+      }, 2000);
+
     } catch (error) { 
       showToast(`Failed to execute pump action`, "error"); 
     }
