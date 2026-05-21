@@ -757,7 +757,7 @@ export function SmartGarden() {
     setIsSavingProfile(true);
     try {
       const userId = currentUser.id || currentUser.userId;
-      const response = await api.put(`/api/user/${userId}`, { fullName: profileForm.fullName.trim(), userName: profileForm.username.trim(), email: profileForm.email.trim() });
+      const response = await api.put(`/api/user/${userId}`, {  username: profileForm.username.trim(), email: profileForm.email.trim(), fullName: profileForm.fullName.trim(), });
       setCurrentUser(response.data); setIsEditingProfile(false); showToast("Profile updated successfully!");
     } catch (error) { showToast("Failed to update profile", "error"); } 
     finally { setIsSavingProfile(false); }
