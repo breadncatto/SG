@@ -589,7 +589,6 @@ export function SmartGarden() {
       await api.put(`/api/pump/${selectedPump.id}/${newMode}`);
 
       setMode(newMode); 
-
       const updatedPump = { ...selectedPump, mode: newMode };
       setPumps(prev => prev.map(p => p.id === selectedPump.id ? updatedPump : p));
       setSelectedPump(updatedPump);
@@ -599,10 +598,9 @@ export function SmartGarden() {
       if (newMode === "MANUAL") {
         try {
           const pumpRes = await api.get(`/api/pump/${selectedPump.id}`); 
-          const isCurrentlyOn = pumpRes.data.status === 'ON'; 
-          setIsPumpOn(isCurrentlyOn); 
+          setIsPumpOn(pumpRes.data.status === 'ON'); 
         } catch (err) {
-          console.error("Error: Could not sync current pump status from server", err);
+          console.error("Error: Could not sync current pump status");
         }
       }
     } catch (error) {
@@ -616,19 +614,17 @@ export function SmartGarden() {
     setShowPowerConfirm(false); 
 
     try {
-      const statusStr = pendingPowerState ? "ON" : "OFF";
-      await api.put(`/api/pump/${selectedPump.id}/${statusStr}`);
+      await api.post(`/api/pump/manual?pumpId=${selectedPump.id}&onCommand=${pendingPowerState}`);
+      
       setIsPumpOn(pendingPowerState); 
-      showToast(`Pump successfully turned ${statusStr}`, "success");
+      showToast(`Pump successfully turned ${pendingPowerState ? "ON" : "OFF"}`, "success");
 
       try {
         let logRes = await api.get(`/api/pumpLog/pump/${selectedPump.id}`).catch(() => api.get(`/api/pump-log/pump/${selectedPump.id}`));
         if (logRes && logRes.data) {
            setPumpLogs(logRes.data);
         }
-      } catch (logErr) {
-         console.error("Failed to refresh activity logs");
-      }
+      } catch (logErr) {}
     } catch (error) { 
       showToast(`Failed to execute pump action`, "error"); 
     }
