@@ -1,13 +1,21 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { Check, Plus, Settings, Trash2, AlertTriangle } from "lucide-react"
+import { Wifi, Check, Plus, Settings, Trash2, AlertTriangle, Thermometer, Droplets, Sun } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 
-export function SettingsTab({ thresholds, onSaveThresholds, onAddPump, onDeletePump }: any) {
+export function SettingsTab({ 
+  thresholds, 
+  onSaveThresholds, 
+  onAddPump, 
+  onDeletePump, 
+  sensors, 
+  onAddSensor, 
+  onDeleteSensor 
+}: any) {
   const [localThresholds, setLocalThresholds] = useState(thresholds)
   const [saved, setSaved] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -45,6 +53,8 @@ export function SettingsTab({ thresholds, onSaveThresholds, onAddPump, onDeleteP
             <label className="text-xs text-muted-foreground mb-2 block">Max Light (lx)</label>
             <Input type="number" value={localThresholds.maxLight} onChange={(e) => setLocalThresholds({ ...localThresholds, maxLight: +e.target.value })} className="rounded-xl bg-background border-border text-foreground focus-visible:ring-ring" />
           </div>
+
+          
           
           {/* new added fields*/}
           <div>
@@ -80,6 +90,56 @@ export function SettingsTab({ thresholds, onSaveThresholds, onAddPump, onDeleteP
           <Button onClick={handleSave} className={cn("w-full rounded-xl transition-all font-semibold mt-2", saved ? "bg-[#6B9071] text-[#0F2A1D]" : "bg-primary text-primary-foreground hover:bg-primary/90")}>
             {saved ? <span className="flex items-center gap-2"><Check className="w-4 h-4" /> Saved!</span> : "Save Configuration"}
           </Button>
+        </div>
+      </section>
+
+      {/* sensor config */}
+      <section className="bg-card rounded-3xl p-5 shadow-sm border border-border">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Wifi className="w-4 h-4 text-primary" />
+            </div>
+            <h2 className="font-semibold text-foreground text-sm tracking-wide">Connected Devices</h2>
+          </div>
+          <Button onClick={onAddSensor} size="sm" variant="secondary" className="rounded-xl h-8 text-xs font-semibold px-3">
+            <Plus className="w-3.5 h-3.5 mr-1" /> Add Sensor
+          </Button>
+        </div>
+
+        <div className="space-y-3">
+          {!sensors || sensors.filter((s: any) => s.type !== "waterVolume").length === 0 ? (
+            <div className="text-center py-6 bg-muted/30 rounded-2xl border border-dashed border-border/60">
+              <p className="text-xs text-muted-foreground">No physical sensors added to this pump yet.</p>
+            </div>
+          ) : (
+            sensors
+              .filter((s: any) => s.type !== "waterVolume")
+              .map((sensor: any) => (
+              <div key={sensor.id} className="flex items-center justify-between p-3.5 bg-background rounded-2xl border border-border/60 shadow-sm group hover:border-primary/30 transition-all duration-300">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-muted group-hover:bg-primary/10 transition-colors">
+                    {sensor.type === 'Temperature' && <Thermometer className="w-4 h-4 text-primary" />}
+                    {sensor.type === 'Moisture' && <Droplets className="w-4 h-4 text-primary" />}
+                    {sensor.type === 'Light' && <Sun className="w-4 h-4 text-primary" />}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{sensor.type} Sensor</p>
+                    <p className="text-[11px] text-muted-foreground font-mono mt-0.5">ID: {sensor.connectId || sensor.id}</p>
+                  </div>
+                </div>
+                
+                <Button 
+                  onClick={() => onDeleteSensor(sensor)} 
+                  variant="ghost" 
+                  size="icon" 
+                  className="w-8 h-8 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            ))
+          )}
         </div>
       </section>
 
@@ -121,6 +181,8 @@ export function SettingsTab({ thresholds, onSaveThresholds, onAddPump, onDeleteP
         </DialogContent>
       </Dialog>
     </div>
+
+    
   )
 }
 

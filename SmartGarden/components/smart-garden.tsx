@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { Bell, Home, BarChart3, Settings, Droplets, ChevronDown, Check, Plus, AlertCircle, AlertTriangle, Loader2, User, LogOut, ArrowLeft, Power, Edit2, Thermometer, Sun, Eye, EyeOff } from "lucide-react"
+import { Bell, Home, BarChart3, Settings, Droplets, ChevronDown, Check, Plus, AlertCircle, AlertTriangle, Loader2, User, LogOut, ArrowLeft, Power, Edit2, Thermometer, Sun, Eye, EyeOff, Wifi, Trash2 } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
@@ -47,6 +47,9 @@ export function SmartGarden() {
   const [newPumpMac, setNewPumpMac] = useState("") 
   const [newSensorType, setNewSensorType] = useState<"Temperature" | "Moisture" | "Light">("Temperature")
   const [newSensorMac, setNewSensorMac] = useState("") 
+  const [sensorForm, setSensorForm] = useState({ brokerName: "", feed: "", password: "", address: "" });
+  const [showSensorPassword, setShowSensorPassword] = useState(false);
+  const [isAddingSensor, setIsAddingSensor] = useState(false);
   
   const [showModeConfirm, setShowModeConfirm] = useState(false)
   const [showPowerConfirm, setShowPowerConfirm] = useState(false)
@@ -670,54 +673,59 @@ export function SmartGarden() {
   }
 
   const handleAddSensor = async () => {
-    if (!selectedPump) return;
-    const currentConnectionId = selectedPump.connectionId;
-
-    if (!currentConnectionId) {
-      showToast("System error: Connection ID not found for this pump", "error");
-      return;
-    }
+    if (!selectedPump || !currentUser) return;
 
     const sensorTypeToAdd = availableSensorTypes.includes(newSensorType) ? newSensorType : availableSensorTypes[0];
     if (!sensorTypeToAdd) return;
+    if (!sensorForm.brokerName.trim() || !sensorForm.feed.trim() || !sensorForm.password.trim() || !sensorForm.address.trim()) {
+      showToast("Please fill in all connection details!", "error");
+      return;
+    }
 
-    const tempId = Date.now();
-    const pendingSensor: Sensor = {
-      id: tempId,
-      type: sensorTypeToAdd as any,
-      macId: `System Connection`,
-      connectId: currentConnectionId, 
-      status: "Offline",
-      connectionStatus: "connecting"
-    };
-
-    const updatedSensors = [...selectedPump.sensors, pendingSensor];
-    setSelectedPump({ ...selectedPump, sensors: updatedSensors });
-    setPumps(prev => prev.map(p => p.id === selectedPump.id ? { ...p, sensors: updatedSensors } : p));
-    setShowAddSensor(false);
+    setIsAddingSensor(true);
 
     try {
+      const connPayload = {
+        userId: currentUser.id || currentUser.userId,
+        brokerName: sensorForm.brokerName.trim(),
+        feed: sensorForm.feed.trim(),
+        password: sensorForm.password.trim(),
+        address: sensorForm.address.trim()
+      };
+      const connRes = await api.post('/api/connection', connPayload);
+      const newConnectionId = connRes.data.id || connRes.data.connectionId;
+
+      if (!newConnectionId) {
+        showToast("System error: Could not retrieve Connection ID", "error");
+        setIsAddingSensor(false);
+        return;
+      }
       const response = await api.post('/api/device', {
-        name: `${sensorTypeToAdd} Sensor`, 
-        type: sensorTypeToAdd.toUpperCase(), 
-        connectId: currentConnectionId, 
+        name: `${sensorTypeToAdd} Sensor`,
+        type: sensorTypeToAdd.toUpperCase(),
+        connectId: newConnectionId,
         pumpId: selectedPump.id
       });
-      
-      const realId = response?.data?.id || response?.data?.deviceId || tempId;
-      const finalizedSensors = updatedSensors.map(s => 
-        s.id === tempId ? { ...s, id: realId, connectionStatus: undefined, status: "Online" as const } : s
-      );
-      
-      setSelectedPump({ ...selectedPump, sensors: finalizedSensors });
-      setPumps(prev => prev.map(p => p.id === selectedPump.id ? { ...p, sensors: finalizedSensors } : p));
-      
-      showToast("Sensor added successfully!");
+      const realId = response?.data?.id || response?.data?.deviceId || Date.now();
+      const newSensor: Sensor = {
+        id: realId,
+        type: sensorTypeToAdd as any,
+        macId: `ID: ${newConnectionId}`,
+        connectId: newConnectionId,
+        status: "Online"
+      };
+
+      const updatedSensors = [...selectedPump.sensors, newSensor];
+      setSelectedPump({ ...selectedPump, sensors: updatedSensors });
+      setPumps(prev => prev.map(p => p.id === selectedPump.id ? { ...p, sensors: updatedSensors } : p));
+
+      showToast("Sensor added successfully!", "success");
+      setShowAddSensor(false);
+      setSensorForm({ brokerName: "", feed: "", password: "", address: "" });
     } catch (error) {
       showToast("Failed to add sensor", "error");
-      const rolledBack = updatedSensors.filter(s => s.id !== tempId);
-      setSelectedPump({ ...selectedPump, sensors: rolledBack });
-      setPumps(prev => prev.map(p => p.id === selectedPump.id ? { ...p, sensors: rolledBack } : p));
+    } finally {
+      setIsAddingSensor(false);
     }
   };
 
@@ -923,37 +931,41 @@ export function SmartGarden() {
       {/* view */}
       <main className="flex-1 overflow-y-auto px-5 pb-24">
         {activeTab === "home" && (
-  hasPumps && selectedPump ? (
-    <DashboardTab 
-      sensorData={sensorData} 
-      mode={mode} 
-      onModeSwitch={(targetMode: "AUTO" | "MANUAL") => { 
-        setPendingMode(targetMode); 
-        setShowModeConfirm(true); 
-      }} 
-      isPumpOn={isPumpOn} 
-      onPowerToggle={(s: boolean) => {
-        setPendingPowerState(s); 
-        setShowPowerConfirm(true);
-      }} 
-      onSensorClick={(s: SensorType) => {
-        setAnalyticsSensor(s); 
-        setActiveTab("analytics");
-      }} 
-      thresholds={currentThresholds} 
-      sensors={selectedPump.sensors} 
-      onAddSensor={() => setShowAddSensor(true)} 
-      onDeleteSensor={handleDeleteSensor} 
-      allSensorsConnected={allSensorsConnected} 
-      pumpLogs={pumpLogs} 
-      onNavigateToLogs={() => setActiveTab("logs")} 
-    />
-  ) : (
-    <EmptyState onAddPump={() => setShowAddPump(true)} />
-  )
-)}
+          hasPumps && selectedPump ? (
+            <DashboardTab 
+              sensorData={sensorData} 
+              mode={mode} 
+              onModeSwitch={(targetMode: "AUTO" | "MANUAL") => { setPendingMode(targetMode); setShowModeConfirm(true); }} 
+              isPumpOn={isPumpOn} 
+              onPowerToggle={(s: boolean) => { setPendingPowerState(s); setShowPowerConfirm(true); }} 
+              onSensorClick={(s: SensorType) => { setAnalyticsSensor(s); setActiveTab("analytics"); }} 
+              thresholds={currentThresholds} 
+              sensors={selectedPump.sensors} 
+              pumpLogs={pumpLogs}
+              onNavigateToLogs={() => setActiveTab("logs")}
+              hasSensors={selectedPump.sensors.length > 0}
+              onNavigateToConfig={() => setActiveTab("settings")}
+            />
+          ) : (
+            <EmptyState onAddPump={() => setShowAddPump(true)} />
+          )
+        )}
         {activeTab === "analytics" && (hasPumps ? <AnalyticsTab sensors={selectedPump?.sensors || []} selectedSensor={analyticsSensor} setSelectedSensor={setAnalyticsSensor} thresholds={currentThresholds} /> : <EmptyStateAnalytics />)}    
-        {activeTab === "settings" && (hasPumps ? <SettingsTab thresholds={currentThresholds} onSaveThresholds={handleUpdateThresholds} onAddPump={() => setShowAddPump(true)} onDeletePump={handleDeletePump} /> : <EmptyStateSettings onAddPump={() => setShowAddPump(true)} />)}
+        {activeTab === "settings" && (
+          hasPumps ? (
+            <SettingsTab 
+              thresholds={currentThresholds} 
+              onSaveThresholds={handleUpdateThresholds} 
+              onAddPump={() => setShowAddPump(true)} 
+              onDeletePump={handleDeletePump} 
+              sensors={selectedPump?.sensors || []}
+              onAddSensor={() => setShowAddSensor(true)}
+              onDeleteSensor={handleDeleteSensor}
+            />
+          ) : (
+            <EmptyStateSettings onAddPump={() => setShowAddPump(true)} />
+          )
+        )}
         {activeTab === "logs" && (
   <div className="space-y-6">
     {/* tab log header */}
@@ -1185,32 +1197,81 @@ export function SmartGarden() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showAddSensor} onOpenChange={(open) => { setShowAddSensor(open); if (!open) { setNewSensorType(availableSensorTypes[0] || "Temperature") }}}>
-        <DialogContent className="max-w-md mx-4 rounded-3xl">
+      <Dialog open={showAddSensor} onOpenChange={(open) => { 
+        setShowAddSensor(open); 
+        if (!open) { 
+          setNewSensorType(availableSensorTypes[0] || "Temperature");
+          setSensorForm({ brokerName: "", feed: "", password: "", address: "" });
+          setShowSensorPassword(false);
+        }
+      }}>
+        <DialogContent className="max-w-md mx-4 rounded-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="flex items-center gap-2"><Plus className="w-5 h-5 text-primary" />Add New Sensor</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="text-sm block mb-2">Sensor Type</label>
+              <label className="text-sm font-medium block mb-2">Sensor Type</label>
               {availableSensorTypes.length > 0 ? (
-                <Select value={availableSensorTypes.includes(newSensorType) ? newSensorType : availableSensorTypes[0]} onValueChange={(value: any) => setNewSensorType(value)}>
+                <Select disabled={isAddingSensor} value={availableSensorTypes.includes(newSensorType) ? newSensorType : availableSensorTypes[0]} onValueChange={(value: any) => setNewSensorType(value)}>
                   <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select type" /></SelectTrigger>
                   <SelectContent>{availableSensorTypes.map((type) => (<SelectItem key={type} value={type}>{type}</SelectItem>))}</SelectContent>
                 </Select>
               ) : (<div className="h-10 px-3 py-2 rounded-xl bg-muted text-sm flex items-center">All sensor types connected</div>)}
             </div>
-            {}
+
+            {/* sensor config*/}
+            {availableSensorTypes.length > 0 && (
+              <div className="p-3 bg-primary/5 rounded-xl border border-primary/20 space-y-3 mt-4">
+                <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-1">Sensor Connection (MQTT)</p>
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs block mb-1">Broker Name</label>
+                    <Input value={sensorForm.brokerName} onChange={(e) => setSensorForm({ ...sensorForm, brokerName: e.target.value })} disabled={isAddingSensor} className="h-8 text-sm bg-background" />
+                  </div>
+                  <div>
+                    <label className="text-xs block mb-1">Password</label>
+                    <div className="relative">
+                      <Input
+                        type={showSensorPassword ? "text" : "password"}
+                        value={sensorForm.password}
+                        onChange={(e) => setSensorForm({ ...sensorForm, password: e.target.value })}
+                        disabled={isAddingSensor}
+                        className="h-8 text-sm bg-background pr-8"
+                      />
+                      {sensorForm.password.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowSensorPassword(!showSensorPassword)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          {showSensorPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="text-xs block mb-1">Feed (Topic)</label>
+                  <Input value={sensorForm.feed} onChange={(e) => setSensorForm({ ...sensorForm, feed: e.target.value })} disabled={isAddingSensor} className="h-8 text-sm bg-background" />
+                </div>
+                
+                <div>
+                  <label className="text-xs block mb-1">Address (Broker URL)</label>
+                  <Input value={sensorForm.address} onChange={(e) => setSensorForm({ ...sensorForm, address: e.target.value })} disabled={isAddingSensor} className="h-8 text-sm bg-background" />
+                </div>
+              </div>
+            )}
           </div>
-          <DialogFooter>
-  <Button variant="outline" onClick={() => setShowAddSensor(false)}>Cancel</Button>
-  
-  {}
-  <Button 
-    onClick={handleAddSensor} 
-    disabled={!selectedPump?.connectionId || availableSensorTypes.length === 0}
-  >
-    Add
-  </Button>
-</DialogFooter>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setShowAddSensor(false)} disabled={isAddingSensor}>Cancel</Button>
+            <Button 
+              onClick={handleAddSensor} 
+              disabled={isAddingSensor || availableSensorTypes.length === 0}
+            >
+              {isAddingSensor ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Adding...</> : "Add Sensor"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

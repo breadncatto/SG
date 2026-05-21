@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { Wifi, Thermometer, Sun, Droplets, Beaker, Power, Plus, Loader2, Trash2, AlertTriangle, ArrowUpRight, Sprout, History } from "lucide-react"
+import { Wifi, Thermometer, Sun, Droplets, Beaker, Power, Plus, Loader2, Trash2, AlertTriangle, ArrowUpRight, Sprout, History, Settings } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -9,9 +9,7 @@ import { SensorType, Sensor } from "@/types/smart-garden"
 
 export function DashboardTab({ 
   sensorData, mode, onModeSwitch, isPumpOn, onPowerToggle, onSensorClick, 
-  thresholds, sensors, onAddSensor, onDeleteSensor, allSensorsConnected, 
-  pumpLogs, 
-  onNavigateToLogs 
+  thresholds, sensors, pumpLogs, onNavigateToLogs, onNavigateToConfig
 }: any) {
   const recentLogs = [...(pumpLogs || [])]
     .sort((a, b) => {
@@ -39,10 +37,18 @@ export function DashboardTab({
         <h2 className="text-sm font-medium text-muted-foreground mb-3">Sensor Readings</h2>
         <div className="grid grid-cols-2 gap-3">
           {!hasSensors && (
-            <div className="col-span-2 bg-card rounded-3xl p-6 shadow-sm border-2 border-dashed border-border text-center">
-              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3 mx-auto"><Wifi className="w-6 h-6 text-muted-foreground" /></div>
-              <p className="text-foreground font-medium mb-1">No sensors connected yet</p>
-              <p className="text-sm text-muted-foreground">Add sensors below to start monitoring.</p>
+            <div className="col-span-2 bg-card rounded-3xl p-6 shadow-sm border-2 border-dashed border-border/60 text-center flex flex-col items-center">
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+                <Wifi className="w-6 h-6 text-primary" />
+              </div>
+              <p className="text-foreground font-semibold mb-1">No sensors connected</p>
+              <p className="text-sm text-muted-foreground mb-4 max-w-[250px]">
+                Please go to the Config tab to set up your new MQTT sensor devices.
+              </p>
+              {/* tab config btn*/}
+              <Button onClick={onNavigateToConfig} variant="outline" className="rounded-xl text-primary border-primary/20 hover:bg-primary/10">
+                <Settings className="w-4 h-4 mr-2" /> Open Config
+              </Button>
             </div>
           )}
           {hasTemp && <SensorCard icon={Thermometer} label="Temperature" value={sensorData.temp} unit="°C" onClick={() => onSensorClick("temp")} isCritical={isTempCritical} />}
@@ -173,12 +179,9 @@ export function DashboardTab({
       <section className="bg-card rounded-3xl p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-medium text-muted-foreground">Device Status</h2>
-          {!allSensorsConnected && (
-            <button onClick={onAddSensor} className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-              <Plus className="w-4 h-4 text-primary" />
-            </button>
-          )}
+          {}
         </div>
+        
         <div className="space-y-3">
           {sensors.filter((s: Sensor) => !s.type.toLowerCase().includes("water")).length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">No sensors added yet</p>
@@ -203,6 +206,7 @@ export function DashboardTab({
                     <span className="text-foreground text-sm font-medium">{sensor.type} Sensor</span>
                   </div>
                 </div>
+                
                 <div className="flex items-center gap-3">
                   {sensor.connectionStatus === "connecting" ? (
                     <div className="flex items-center gap-2">
@@ -220,9 +224,7 @@ export function DashboardTab({
                       <span className={cn("text-sm font-medium", sensor.status === "Online" ? "text-green-600" : "text-destructive")}>{sensor.status}</span>
                     </div>
                   )}
-                  <button onClick={() => onDeleteSensor(sensor)} className="p-1.5 rounded-lg hover:bg-destructive/10">
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </button>
+                  {}
                 </div>
               </div>
             ))
