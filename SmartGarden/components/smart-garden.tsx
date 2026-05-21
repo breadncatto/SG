@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { Bell, Home, BarChart3, Settings, Droplets, ChevronDown, Check, Plus, AlertCircle, AlertTriangle, Loader2, User, LogOut, ArrowLeft, Power, Edit2, Thermometer, Sun } from "lucide-react"
+import { Bell, Home, BarChart3, Settings, Droplets, ChevronDown, Check, Plus, AlertCircle, AlertTriangle, Loader2, User, LogOut, ArrowLeft, Power, Edit2, Thermometer, Sun, Eye, EyeOff } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
@@ -32,6 +32,7 @@ export function SmartGarden() {
   
   const [alertsList, setAlertsList] = useState<any[]>([])
   const [pumpLogs, setPumpLogs] = useState<any[]>([]) 
+  const [showPumpPassword, setShowPumpPassword] = useState(false);
   
   const [isLoadingPumps, setIsLoadingPumps] = useState(false)
   const [activeTab, setActiveTab] = useState<"home" | "analytics" | "logs" | "settings">("home")
@@ -1111,10 +1112,29 @@ export function SmartGarden() {
                   <label className="text-xs block mb-1">Broker Name</label>
                   <Input value={pumpForm.brokerName} onChange={(e) => setPumpForm({ ...pumpForm, brokerName: e.target.value })} disabled={isAddingPump} className="h-8 text-sm bg-background" />
                 </div>
-                <div>
-                  <label className="text-xs block mb-1">Password</label>
-                  <Input type="password" value={pumpForm.password} onChange={(e) => setPumpForm({ ...pumpForm, password: e.target.value })} disabled={isAddingPump} className="h-8 text-sm bg-background" />
-                </div>
+                {/* passw*/}
+<div>
+  <label className="text-xs block mb-1">Password</label>
+  <div className="relative">
+    <Input 
+      type={showPumpPassword ? "text" : "password"} 
+      value={pumpForm.password} 
+      onChange={(e) => setPumpForm({ ...pumpForm, password: e.target.value })} 
+      disabled={isAddingPump} 
+      className="h-8 text-sm bg-background pr-8" 
+    />
+    {}
+    {pumpForm.password.length > 0 && (
+      <button 
+        type="button" 
+        onClick={() => setShowPumpPassword(!showPumpPassword)} 
+        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+      >
+        {showPumpPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+      </button>
+    )}
+  </div>
+</div>
               </div>
               
               <div>
