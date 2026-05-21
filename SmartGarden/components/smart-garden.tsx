@@ -623,7 +623,7 @@ export function SmartGarden() {
       showToast(`Pump successfully turned ${pendingPowerState ? "ON" : "OFF"}`, "success");
       setTimeout(async () => {
         try {
-          let logRes = await api.get(`/api/pumpLog/${selectedPump.id}`).catch(() => api.get(`/api/pumpLog/${selectedPump.id}`));
+          let logRes = await api.get(`/api/pumpLog/pump/${selectedPump.id}`).catch(() => api.get(`/api/pumpLog/${selectedPump.id}`));
           if (logRes && logRes.data) {
              setPumpLogs(logRes.data);
           }
