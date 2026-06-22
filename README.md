@@ -4,6 +4,9 @@ A high-performance, cross-platform smart gardening monitoring application built 
 
 <img width="426" height="240" alt="Image" src="https://github.com/user-attachments/assets/f94d5bec-e7ee-427f-ab9a-627bd2b55fac" />
 
+> **📢 Team Project Shoutout:** > This frontend application is part of a team project.** For the backend implementation, please check out our [Backend Repository](https://github.com/cn2303/MP252-Smart-Garden.git).
+
+
 ## 📋 Table of Contents
 - [Overview](#overview)
 - [Tech Stack](#tech-stack)
